@@ -1,0 +1,138 @@
+/* Enough — design tokens, card, and motion.
+   Concept: an editor's desk. The only accent is the proofreader's blue pencil,
+   and it is used for exactly one thing: marking what gets cut. */
+
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=Instrument+Serif:ital@1&display=swap');
+
+:root {
+  --fog: #E9EDEF;       /* page */
+  --paper: #F7F9FA;     /* card */
+  --ink: #1B2328;       /* text */
+  --graphite: #5B6870;  /* secondary text */
+  --line: #CBD3D8;      /* card border */
+  --pencil: #2F4BFF;    /* blue pencil: cuts, focus, nothing else */
+  --radius: 14px;       /* one radius, used on cards only */
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fog: #12171A;
+    --paper: #1A2126;
+    --ink: #E6ECEF;
+    --graphite: #98A5AC;
+    --line: #2B353B;
+    --pencil: #8FA2FF;
+  }
+}
+
+html { background: var(--fog); color: var(--ink); }
+body {
+  margin: 0;
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+/* ---------- Layout: one centered column, left-aligned text ---------- */
+.stage { min-height: 100svh; display: grid; place-items: center; padding: 24px; }
+.column { width: 100%; max-width: 640px; }
+.meta { color: var(--graphite); font-size: .9rem; margin: 0 0 16px 4px; } /* "12 left" */
+
+/* ---------- The card ---------- */
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 40px 44px;
+}
+.card-text {
+  margin: 0;
+  font-size: clamp(1.5rem, 3.2vw, 2.125rem);
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  max-width: 36ch;
+}
+.card-sub { margin: 20px 0 0; color: var(--graphite); font-size: .9rem; } /* channel + date */
+
+/* ---------- Actions: plain text buttons, no boxes ---------- */
+.actions { display: flex; gap: 28px; margin: 24px 0 0 4px; }
+.act {
+  background: none; border: 0; padding: 10px 2px;
+  font: 500 .95rem 'Instrument Sans', system-ui, sans-serif;
+  color: var(--ink); cursor: pointer;
+}
+.act kbd { font: inherit; color: var(--graphite); margin-left: 6px; }
+.act:hover { text-decoration: underline; text-underline-offset: 4px; }
+:focus-visible { outline: 2px solid var(--pencil); outline-offset: 3px; border-radius: 4px; }
+
+/* ---------- Motion 1: the pencil strike (answers a click, so it's welcome) ---------- */
+.struck {
+  background-image: linear-gradient(var(--pencil), var(--pencil));
+  background-repeat: no-repeat;
+  background-position: 0 58%;
+  background-size: 0% 2px;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background-size 220ms var(--ease);
+}
+.struck.on { background-size: 100% 2px; }
+
+/* ---------- Motion 2: Cut. Order: add .on to .struck, wait 220ms,
+              add .is-gone to .card, remove the node on animationend ---------- */
+.card.is-gone { animation: dissolve 320ms var(--ease) forwards; }
+@keyframes dissolve {
+  to { opacity: 0; filter: blur(6px); transform: translateY(-6px); }
+}
+/* Keep: the card simply leaves to the right */
+.card.is-kept { animation: keep 180ms ease-in forwards; }
+@keyframes keep { to { opacity: 0; transform: translateX(24px); } }
+
+/* Collapse the gap after the card is removed so the next card rises smoothly */
+.slot { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 280ms var(--ease); }
+.slot > * { overflow: hidden; }
+.slot.collapsed { grid-template-rows: 0fr; }
+
+/* ---------- Motion 3: Essence editor. Each cut word gets
+              style="--i: N" (its order among cut words) ---------- */
+.word { display: inline-block; white-space: nowrap; overflow: hidden; vertical-align: bottom;
+        max-width: 24ch; margin-right: .28em; }
+.word.cut { /* strike first, then collapse */
+  background-image: linear-gradient(var(--pencil), var(--pencil));
+  background-repeat: no-repeat; background-position: 0 58%; background-size: 100% 2px;
+}
+.word.gone {
+  opacity: 0; max-width: 0; margin-right: 0;
+  transition: opacity 240ms ease, max-width 320ms var(--ease), margin-right 320ms var(--ease);
+  transition-delay: calc(220ms + var(--i, 0) * 25ms);
+}
+.count { font-variant-numeric: tabular-nums; color: var(--graphite); }
+
+/* ---------- Motion 4: the one orchestrated moment: "Enough." ---------- */
+.enough {
+  font-family: 'Instrument Serif', serif;
+  font-style: italic;
+  font-weight: 400;
+  font-size: clamp(4rem, 14vw, 9rem);
+  line-height: 1;
+  margin: 0;
+  animation: settle 900ms var(--ease) both;
+}
+@keyframes settle {
+  from { opacity: 0; letter-spacing: .05em; }
+  to   { opacity: 1; letter-spacing: -0.03em; }
+}
+.enough-sub { color: var(--graphite); margin: 16px 0 0 6px; }
+
+/* ---------- Reduced motion: keep the meaning, drop the movement ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 120ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+  .card.is-gone, .card.is-kept { animation-name: fade-only; }
+  .enough { animation-name: fade-only; }
+  @keyframes fade-only { to { opacity: 0; } }
+  .enough { animation-direction: reverse; }
+}
