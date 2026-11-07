@@ -3,6 +3,13 @@ import type { ReactNode } from 'react'
 import type { QueueCard, SessionResponse } from '../types'
 import { getQueue, cutPost } from '../lib/api'
 import { formatLeft } from '../lib/format'
+import {
+  browserStorage,
+  playCrumpleSound,
+  primeCrumpleSound,
+  readSoundPreference,
+  writeSoundPreference,
+} from '../lib/sound'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { QueueCardView, type ReviewCard } from '../components/QueueCard'
 import { fixtureCards } from '../fixtures/cards'
@@ -100,6 +107,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const [entering, setEntering] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const [cutError, setCutError] = useState<string | null>(null)
+  const [soundOn, setSoundOn] = useState(() => readSoundPreference(browserStorage()))
 
   const timers = useRef<number[]>([])
   const phaseRef = useRef<Phase>('idle')
@@ -234,12 +242,15 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     goneRef.current = true
     setGone(true)
 
+    // The sound is the paper, not a notification: it starts with the crumple.
+    if (soundOn) playCrumpleSound()
+
     // Safety net in case the crumple animation never reports animationend.
     later(
       beginCollapse,
       reduced ? REDUCED_LEAVE_FALLBACK_MS : LEAVE_FALLBACK_MS,
     )
-  }, [beginCollapse, later, reduced])
+  }, [beginCollapse, later, reduced, soundOn])
 
   const handleCut = useCallback(() => {
     if (phaseRef.current !== 'idle') return
@@ -252,6 +263,9 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     setPhase('striking')
     setStruck(true)
     setCutError(null)
+
+    // A cut click is the gesture that lets the audio context start.
+    if (soundOn) primeCrumpleSound()
 
     // The pencil draws while Buffer deletes. The card only dissolves once the
     // delete is confirmed, so a failure leaves the queue and the card intact.
@@ -279,7 +293,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
             : "Buffer didn't delete that post. Your queue is unchanged. Try again."
         setCutError(message)
       })
-  }, [beginLeaving, clearTimers, isDemo, later, reduced])
+  }, [beginLeaving, clearTimers, isDemo, later, reduced, soundOn])
 
   const handleKeep = useCallback(() => {
     if (phaseRef.current !== 'idle') return
@@ -292,6 +306,15 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
 
     later(beginCollapse, reduced ? REDUCED_KEEP_MS : KEEP_MS)
   }, [beginCollapse, later, reduced])
+
+  const toggleSound = useCallback(() => {
+    setSoundOn((on) => {
+      const next = !on
+      writeSoundPreference(browserStorage(), next)
+      if (next) primeCrumpleSound()
+      return next
+    })
+  }, [])
 
   const handleCardAnimationEnd = useCallback(() => {
     if (goneRef.current) beginCollapse()
@@ -416,20 +439,32 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     )
   } else {
     screen = (
-      <main className="stage">
+      <main className="stage review-stage">
         <div className="column">
           <div className="queue-head">
-            <p className="meta">
-              {formatLeft(remaining)}
-              {!isDemo ? (
-                <>
-                  {' · '}
-                  <button className="act" type="button" onClick={() => setWriting(true)}>
-                    Trim a draft
-                  </button>
-                </>
-              ) : null}
-            </p>
+            <div className="queue-line">
+              <p className="meta">
+                {formatLeft(remaining)}
+                {!isDemo ? (
+                  <>
+                    {' · '}
+                    <button className="act" type="button" onClick={() => setWriting(true)}>
+                      Trim a draft
+                    </button>
+                  </>
+                ) : null}
+              </p>
+              <button
+                className="act queue-sound"
+                type="button"
+                onClick={toggleSound}
+                aria-label={
+                  soundOn ? 'Turn the crumple sound off' : 'Turn the crumple sound on'
+                }
+              >
+                {soundOn ? 'Sound off' : 'Sound on'}
+              </button>
+            </div>
             <div className="queue-progress" aria-hidden="true">
               <span style={{ width: `${remainingShare}%` }} />
             </div>

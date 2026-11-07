@@ -281,8 +281,25 @@ a.act {
 
 /* ---------- Queue: one quiet progress cue ---------- */
 
+/* The review screen is anchored at the top, not centered. The count and the
+   sheet's top edge keep the same home while cards change height. */
+.stage.review-stage {
+  align-items: start;
+  justify-items: center;
+  padding-top: clamp(24px, 22vh, 240px);
+  padding-bottom: 48px;
+}
+
 .queue-head {
   margin-bottom: 18px;
+}
+
+/* Count and sound toggle share one quiet line above the progress hairline. */
+.queue-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .queue-head .meta {
@@ -294,6 +311,15 @@ a.act {
   padding: 0;
   font-size: inherit;
   font-weight: 500;
+}
+
+.queue-sound {
+  flex: none;
+  color: var(--graphite);
+}
+
+.queue-sound:hover {
+  color: var(--ink);
 }
 
 .queue-progress {

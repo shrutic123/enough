@@ -9,6 +9,7 @@
     "dev:api": "node --watch server/index.js",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "node --test test/*.test.mjs",
     "typecheck": "tsc -b"
   },
   "dependencies": {

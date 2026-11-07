@@ -354,21 +354,31 @@ There is no queue audit. Deterministic reasons (error status, a past `dueAt`) ar
 `Queue.tsx` runs a four-phase machine: `idle → striking → leaving → collapsing → idle`.
 
 1. **Strike** (`striking`): add `.on` to `.struck`; the pencil line draws for **220ms**. At the same moment, `cutPost()` starts. The card does not move until Buffer confirms the delete.
-2. **Leave** (`leaving`): once the delete resolves and the strike has had its 220ms, add `.is-gone` to the card; the dissolve runs **320ms**. A `400ms` timer is a safety net if `animationend` never fires. `animationend` on the card itself also calls the collapse step.
+2. **Leave** (`leaving`): once the delete resolves and the strike has had its 220ms, add `.is-gone`; the words leave in **160ms** and the blank sheet crumples for **520ms**. A **720ms** timer is the safety net if `animationend` never fires. The current crumple is a clipped, creased sheet that folds inward; it is not a scale-down. Reduced motion uses a 160ms `crumple-fade`.
 3. **Collapse** (`collapsing`): add `.collapsed` to the wrapping `.slot` (grid row `1fr → 0fr`, **280ms**).
 4. **Advance**: after 280ms, clear timers, increment the cut total, announce "Cut. N left.", reset the visual flags, advance the index, and move focus to the next card's Keep button.
 
-If the delete fails, the timers are cleared, `.struck.on` is removed, the phase returns to `idle`, the card stays, and the error replaces the reason line (`role="alert"`) and is announced. Reduced motion: strike wait 0ms, dissolve fallback 160ms (CSS animations run at 120ms), collapse wait 0ms. Focus and the announcement still happen.
+If the delete fails, the timers are cleared, `.struck.on` is removed, the phase returns to `idle`, the card stays, and the error replaces the reason line (`role="alert"`) and is announced. Reduced motion: strike wait 0ms, crumple fallback 160ms, collapse wait 0ms. Focus and the announcement still happen.
 
 ### Keep **[built]**
 
-`idle → leaving` directly: add `.is-kept`; the sheet settles down (`translateY(4px)`, **220ms**) while a graphite "kept" note fades in the left page margin and out by 460ms, then collapse the slot (**280ms**), then advance. The two paper edges behind the card fade when the decision starts. Reduced motion waits 120ms for an opacity-only fade, then collapses immediately. Keep makes no API call and counts toward "kept".
+`idle → leaving` directly: add `.is-kept`; the sheet lifts 5px, slides down 16px and shrinks slightly (**220ms**) as it returns under the pile, while a graphite "kept" note fades in the left page margin and out by 460ms. Then collapse the slot (**280ms**), then advance. The two paper edges behind the card fade when the decision starts. Reduced motion waits 120ms for an opacity-only fade, then collapses immediately. Keep makes no API call and counts toward "kept".
 
 ### Queue composition **[built]**
 
 - The card is `.sheet`; while more than one card remains, `.sheet-stack.stacked` shows two 1px outlined sheets offset 6px and 14px below it. They are transparent outlines, not box shadows, so they read as paper edges. When the last card arrives, the edges fade and the 16px stack padding closes over 220ms.
 - `.queue-progress` is a 120px hairline; the graphite segment is `remaining / total` wide and transitions in 280ms. It is `aria-hidden`; the "N left" text remains the accessible count.
 - The "kept" note is hidden below 900px, where there is no page margin; the settle motion carries the beat there.
+- The review screen is anchored at the top (`.stage.review-stage`) rather than vertically centered. The count, the progress hairline and the sheet's top edge keep a fixed page position while card heights change; a long post grows downward instead of pushing the header up.
+- The card keeps its natural height. There is no internal scrollbar: a long post is a taller sheet, and the page scrolls only when the sheet exceeds the viewport.
+
+### Sound **[built]**
+
+- The crumple sound is synthesized in `src/lib/sound.ts`: four short noise grains through a band-pass and high-pass, one master gain at **0.045**. No audio file ships.
+- It is primed on the Cut click (the gesture that permits audio) and played in `beginLeaving`, i.e. only after Buffer confirms the delete. Keep, entry, hover and a failed Cut are silent.
+- It returns early when the tab is hidden, so a background tab cannot make noise.
+- A text toggle in the queue header shows `Sound off` / `Sound on`, with an `aria-label` that names the action. The preference is stored under `enough.sound` in `localStorage`; blocked storage reads fall back to sound on and blocked writes are ignored.
+- `npm test` (Node's built-in runner) covers the preference helpers, including the blocked-storage cases.
 
 ### Guards and accessibility **[built]**
 
