@@ -42,6 +42,11 @@ export const fixtureCards: FixtureCard[] = [
     dueAt: '2026-10-28T18:00:00.000Z',
     status: 'scheduled',
     reason: 'This was meant to go out already.',
+    asset: {
+      thumbnail: 'https://picsum.photos/id/1025/240/240',
+      source: 'https://picsum.photos/id/1025/1080/1080',
+      type: 'image',
+    },
   },
   {
     id: 'fixture-5',
@@ -61,5 +66,10 @@ export const fixtureCards: FixtureCard[] = [
     service: 'instagram',
     dueAt: '2026-11-18T15:45:00.000Z',
     status: 'scheduled',
+    asset: {
+      thumbnail: 'https://picsum.photos/id/1062/240/240',
+      source: 'https://picsum.photos/id/1062/1080/1080',
+      type: 'image',
+    },
   },
 ]

@@ -338,7 +338,13 @@ app.post(
     requireSameOrigin(req)
     requireSession(req)
 
-    const { kind, text: rawText, channelId: rawChannelId, organizationId: rawOrganizationId } = req.body || {}
+    const {
+      kind,
+      text: rawText,
+      channelId: rawChannelId,
+      organizationId: rawOrganizationId,
+      imageUrl: rawImageUrl,
+    } = req.body || {}
 
     if (kind !== 'scheduled' && kind !== 'draft') {
       throw new HttpError(400, 'Choose where this should go.')
@@ -360,6 +366,27 @@ app.post(
     const channelId = rawChannelId.trim()
     const organizationId = rawOrganizationId.trim()
 
+    // Optional. Buffer fetches the URL itself, so only the shape is checked
+    // here: a full http(s) link, not a data URI or a local path.
+    let imageUrl
+    if (typeof rawImageUrl === 'string' && rawImageUrl.trim()) {
+      imageUrl = rawImageUrl.trim()
+      if (imageUrl.length > 2000) {
+        throw new HttpError(400, 'That image link is too long. Use one under 2,000 characters.')
+      }
+      let parsed
+      try {
+        parsed = new URL(imageUrl)
+      } catch {
+        throw new HttpError(400, 'That image link is not a full URL. Use a public https link.')
+      }
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new HttpError(400, 'That image link is not a full URL. Use a public https link.')
+      }
+    } else if (rawImageUrl !== undefined && rawImageUrl !== null && typeof rawImageUrl !== 'string') {
+      throw new HttpError(400, 'That image link is not a full URL. Use a public https link.')
+    }
+
     // Fetch the channel rather than trusting the service posted by the client:
     // metadata and the channel's existence both depend on Buffer's answer.
     const channels = (await graphql(req.ctx, CHANNELS_QUERY, { organizationId })).channels || []
@@ -376,6 +403,7 @@ app.post(
         text,
         kind,
         schedulingType,
+        imageUrl,
       }),
     })
     let post = data?.createPost?.post
@@ -400,6 +428,7 @@ app.post(
           text,
           kind,
           schedulingType,
+          imageUrl,
         }),
       })
       post = data?.createPost?.post

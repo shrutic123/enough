@@ -1,12 +1,15 @@
 import { forwardRef } from 'react'
+import type { QueueCard } from '../types'
 import { formatCardSubline } from '../lib/format'
 
 export type ReviewCard = {
   id: string
   text: string
   channelName: string
+  service: string
   dueAt: string | null
   reason?: string
+  asset?: QueueCard['asset']
 }
 
 type QueueCardViewProps = {
@@ -29,6 +32,8 @@ export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
     const cardClass = ['card', kept ? 'is-kept' : '', gone ? 'is-gone' : '']
       .filter(Boolean)
       .join(' ')
+    const mediaLabel = card.asset?.type === 'video' ? 'Video post' : 'Image post'
+    const displayText = card.text.trim() || (card.asset ? mediaLabel : '')
 
     return (
       <article
@@ -38,10 +43,20 @@ export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
           if (event.target === event.currentTarget) onAnimationEnd()
         }}
       >
-        <p className="card-text">
-          <span className={struck ? 'struck on' : 'struck'}>{card.text}</span>
-        </p>
-        <p className="card-sub">{formatCardSubline(card.channelName, card.dueAt)}</p>
+        <div className="card-top">
+          <p className="card-text">
+            <span className={struck ? 'struck on' : 'struck'}>{displayText}</span>
+          </p>
+          {card.asset ? (
+            <img
+              className="card-thumb"
+              src={card.asset.thumbnail}
+              alt=""
+              loading="lazy"
+            />
+          ) : null}
+        </div>
+        <p className="card-sub">{formatCardSubline(card.service, card.channelName, card.dueAt)}</p>
         {error ? (
           <p className="card-why card-error" role="alert">
             {error}

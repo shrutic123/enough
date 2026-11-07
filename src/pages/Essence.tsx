@@ -38,6 +38,7 @@ export default function EssencePage({
 
   const [draft, setDraft] = useState('')
   const [kind, setKind] = useState<EssenceKind>('scheduled')
+  const [imageUrl, setImageUrl] = useState('')
 
   const [channels, setChannels] = useState<Channel[]>([])
   const [channelId, setChannelId] = useState('')
@@ -117,8 +118,11 @@ export default function EssencePage({
   const resultWords = countWords(result)
   const tooLong = draft.length > MAX_DRAFT
   const busy = trimming || sending
+  const selectedChannel = channels.find((channel) => channel.id === channelId)
+  const needsImage = selectedChannel?.service === 'instagram' && !imageUrl.trim()
   const canTrim = !busy && draft.trim().length > 0 && !tooLong
-  const canSend = phase === 'result' && !busy && result.trim().length > 0 && Boolean(channelId)
+  const canSend =
+    phase === 'result' && !busy && result.trim().length > 0 && Boolean(channelId) && !needsImage
 
   function handleDraftChange(event: ChangeEvent<HTMLTextAreaElement>) {
     setDraft(event.target.value)
@@ -200,7 +204,13 @@ export default function EssencePage({
     setSendError(null)
 
     try {
-      const created = await createEssencePost({ kind, text, channelId, organizationId })
+      const created = await createEssencePost({
+        kind,
+        text,
+        channelId,
+        organizationId,
+        imageUrl: imageUrl.trim() || undefined,
+      })
       if (!mounted.current) return
 
       clearAnimation()
@@ -341,6 +351,29 @@ export default function EssencePage({
               </div>
             )}
           </div>
+
+          {selectedChannel?.service === 'instagram' ? (
+            <div className="essay-field">
+              <label className="essay-label" htmlFor="essence-image">
+                Image URL
+              </label>
+              <input
+                id="essence-image"
+                className="essay-input essay-line"
+                type="url"
+                value={imageUrl}
+                onChange={(event) => {
+                  setImageUrl(event.target.value)
+                  setSendError(null)
+                }}
+                placeholder="https://"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <p className="count">Instagram needs an image or video. Paste a public link.</p>
+            </div>
+          ) : null}
 
           <div className="essay-field">
             <label className="essay-label" htmlFor="essence-destination">

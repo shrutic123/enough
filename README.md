@@ -17,8 +17,8 @@ Enough is an editor's desk. One card at a time, one decision: keep it or cut it.
 
 ## What it does
 
-1. **Queue.** Reads scheduled posts, drafts, errors and posts awaiting approval. Shows one card with its channel, date and a plain-language reason. **K** keeps, **C** cuts. Cut deletes the post in Buffer; a failure keeps the card and says so.
-2. **Essence editor.** Paste a draft, choose a channel and a destination, then **Trim**. The server returns a shorter version; the browser computes the word-level diff, draws the blue pencil through the removed words and collapses them. The result stays editable, then goes to Buffer as a queued post or a draft.
+1. **Queue.** Reads scheduled posts, drafts, errors and posts awaiting approval. Shows one card with its network, account, date, a thumbnail when the post has media, and a plain-language reason. **K** keeps, **C** cuts. Cut deletes the post in Buffer; a failure keeps the card and says so.
+2. **Essence editor.** Paste a draft, choose a channel and a destination, then **Trim**. The server returns a shorter version; the browser computes the word-level diff, draws the blue pencil through the removed words and collapses them. The result stays editable, then goes to Buffer as a queued post or a draft. Instagram needs an image, so the editor asks for an optional public image URL when that channel is selected.
 
 There is no Merge, no ideas manager, and no AI audit in this release. Keep/Cut is the whole review, because one decision per card is the point.
 
@@ -122,7 +122,7 @@ Dropped on purpose: Merge, because it is two calls with a partial-failure state;
 - Cut is permanent. There is no undo; use a test account for demos.
 - The first organization on the account is used. There is no organization or channel switcher.
 - One page of the queue (50 posts) and at most 20 review cards.
-- Media-only posts are skipped because they have no text.
+- Media-only posts show as "Image post" or "Video post" with a thumbnail. Only a post with neither text nor media is hidden.
 - Ideas are not shown or created.
 - The queue is a snapshot taken on load. Another device's changes appear on refresh.
 - If Buffer has no posting slots on a channel, "Add to queue" is refused by Buffer; save as a draft instead.

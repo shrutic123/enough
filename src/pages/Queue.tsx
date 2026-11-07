@@ -56,7 +56,9 @@ function toReviewCards(posts: SourceCard[]): ReviewCard[] {
       id: post.id,
       text: post.text,
       channelName: post.channelName,
+      service: post.service,
       dueAt: post.dueAt,
+      asset: post.asset,
       reason: reasonFor(post),
     }))
 }

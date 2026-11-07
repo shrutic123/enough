@@ -156,3 +156,36 @@ a.act {
   white-space: nowrap;
   border: 0;
 }
+
+/* A single-line variant of the ruled field. */
+.essay-input.essay-line {
+  min-height: 0;
+  height: auto;
+}
+
+/* A post with media shows one thumbnail; the text stays the subject. */
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+}
+
+.card-top .card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-thumb {
+  flex: none;
+  width: 96px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+@media (max-width: 520px) {
+  .card-thumb {
+    width: 72px;
+    height: 72px;
+  }
+}

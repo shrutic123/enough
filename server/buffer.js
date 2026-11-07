@@ -241,6 +241,7 @@ export const QUEUE_QUERY = `
           status
           createdAt
           updatedAt
+          assets { id type mimeType thumbnail source }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -276,11 +277,20 @@ export const CREATE_POST_MUTATION = `
 
 // Ported from Buffer's starter app. `assets: []` is required even with no
 // media, and some networks reject a post without their metadata block.
-export function buildPostInput({ channelId, service, text, kind, schedulingType = 'automatic' }) {
+export function buildPostInput({
+  channelId,
+  service,
+  text,
+  kind,
+  schedulingType = 'automatic',
+  imageUrl,
+}) {
   const input = {
     channelId,
     text,
-    assets: [],
+    // Instagram refuses a post without media. A public image link is enough:
+    // Buffer fetches it. Other channels accept the same asset shape.
+    assets: imageUrl ? [{ image: { url: imageUrl } }] : [],
     needsApproval: false,
     mode: 'addToQueue',
     schedulingType,
@@ -302,24 +312,36 @@ export function buildPostInput({ channelId, service, text, kind, schedulingType 
 }
 
 // Join each post to its channel and trim it to the QueueCard contract in
-// src/types.ts. Media-only posts have no text, so they are skipped in v1.
+// src/types.ts. A post with no text is still a real post: if it has media it
+// stays in the review as an image or video, with the thumbnail shown.
 export function normalizeQueue(posts, channels) {
   const byId = new Map(channels.map((channel) => [channel.id, channel]))
 
   return posts
-    .filter((post) => typeof post.text === 'string' && post.text.trim())
     .map((post) => {
       const channel = byId.get(post.channelId)
+      const asset = (post.assets || []).find(
+        (candidate) => candidate?.thumbnail || candidate?.source,
+      )
+      const text = typeof post.text === 'string' ? post.text : ''
       return {
         id: post.id,
-        text: post.text,
+        text,
         channelId: post.channelId,
         channelName: channel?.displayName || channel?.name || '',
         service: channel?.service || '',
         dueAt: post.dueAt || null,
         status: String(post.status || '').toLowerCase(),
+        asset: asset
+          ? {
+              thumbnail: asset.thumbnail || asset.source,
+              source: asset.source || asset.thumbnail,
+              type: String(asset.type || '').toLowerCase(),
+            }
+          : null,
       }
     })
+    .filter((post) => post.text.trim() || post.asset)
     .sort((a, b) => dueAtTime(a.dueAt) - dueAtTime(b.dueAt))
 }
 

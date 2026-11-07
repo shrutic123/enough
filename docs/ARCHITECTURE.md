@@ -205,6 +205,7 @@ query Queue($organizationId: OrganizationId!, $first: Int!, $after: String) {
         status
         createdAt
         updatedAt
+        assets { id type mimeType thumbnail source }
       }
     }
     pageInfo { hasNextPage endCursor }
@@ -214,8 +215,9 @@ query Queue($organizationId: OrganizationId!, $first: Int!, $after: String) {
 
 - **No `sort` argument.** The `SortDirection` spelling is unverified, so `normalizeQueue()` sorts by `dueAt` in JavaScript: ascending, with missing/unparseable dates last.
 - `first` comes from `?first=`, default 50, clamped to 1..50. The client does not send it, so the server fetches 50. `after` is declared but never sent: only the first page is read.
-- Each post is joined server-side to the channel list: `channelName = displayName || name || ''`, plus `service`.
-- Posts with missing or blank `text` (media-only) are skipped.
+- Each post is joined server-side to the channel list: `channelName = displayName || name || ''`, plus `service`. The card names the network (`Instagram`, `LinkedIn`) before the account name, so a handle alone never has to identify the site.
+- The first asset, if any, becomes `asset = { thumbnail, source, type }` and renders as a 96px thumbnail on the card.
+- Posts with no text are kept when they have media: the card labels them "Image post" or "Video post". Only a post with neither text nor an asset is skipped.
 - Status is lowercased into the `PostStatus` union.
 - The client sorts again by `dueAt` (nulls last) and caps the review at 20 cards.
 
@@ -234,7 +236,7 @@ mutation DeletePost($input: DeletePostInput!) {
 
 `DeletePostInput` is `{ id: PostId! }`. The signed-in session is the authorization boundary: the id belongs to the user's own queue, and Buffer rejects an id that is not theirs. The route additionally requires a same-origin request. It does not re-fetch the queue before deleting, so a post removed elsewhere still returns Buffer's typed error rather than a local "not found".
 
-### Create **[planned]**
+### Create **[built]**
 
 ```graphql
 mutation CreatePost($input: CreatePostInput!) {
@@ -247,7 +249,9 @@ mutation CreatePost($input: CreatePostInput!) {
 }
 ```
 
-- Required: `channelId`, `text`, `assets: []`, `needsApproval: false`, `mode`, `schedulingType: automatic`.
+- Required: `channelId`, `text`, `assets`, `needsApproval: false`, `mode`, `schedulingType`.
+- `assets` is `[]` for a text-only post, or `[{ image: { url } }]` when an optional public image URL is supplied. Buffer fetches the URL; the server validates only the shape (`http`/`https`, under 2,000 characters).
+- `schedulingType` starts as `automatic`. Instagram personal profiles refuse that and ask for `notification`, so the route retries once with `notification` when Buffer's typed error says so. The response returns the mode actually used, and the confirmation says Buffer will remind the person to post.
 - `saveToDraft: true` requires a channel and makes the status `draft`.
 - Per-network metadata is required for some services (Instagram `{type:"post", shouldShareToFeed:true}`, Facebook `{type:"post"}`, Google Business `{type:"whats_new"}`). Reuse the starter's `buildPostInput` mapping. YouTube needs a title.
 - `mode`: `addToQueue` for the default; `customScheduled` + `dueAt` if a time is chosen.
@@ -439,7 +443,7 @@ Manual checks, with what is possible today:
 - Cookie sessions cannot coordinate concurrent refreshes across tabs. Acceptable for v1; documented.
 - Queue is a load-time snapshot and only the first page (up to 50, reviewed as 20). Another device's changes appear on refresh.
 - **Cut has no undo.** It deletes immediately once Buffer confirms; the demo should use a test account.
-- Media-only posts are skipped.
+- Media-only posts are kept and labelled "Image post" or "Video post", with a thumbnail.
 - Vercel's function rewrite path semantics are unconfirmed on a live deployment.
 - The localhost and production redirect URIs are not registered yet, so no browser OAuth round trip has been completed.
 - Production domain is unknown.
