@@ -38,7 +38,7 @@ An editor's desk. The only accent is a proofreader's blue pencil, and it is used
 
 The product is deliberately small. It does two things well rather than becoming a Buffer client.
 
-**What changed in this slice (Nov 6):** the first release is **Keep/Cut only**. It reads the real queue, shows one card at a time, and runs Keep/Cut in the browser. Cut does not delete in Buffer yet. Merge remains a stretch goal. Ideas are create-only and are not part of this release.
+**What changed in this slice (Nov 6):** the first release is **Keep/Cut only**. It reads the real queue, shows one card at a time, and Cut deletes the post in Buffer. Merge remains a stretch goal. Ideas are create-only and are not part of this release.
 
 ## 4. Goals and non-goals
 
@@ -89,7 +89,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 **Scopes**
 
-`account:read`, `posts:read`, `posts:write`, `ideas:read`, `ideas:write`, `offline_access`. Request only the scopes enabled on the app client. **Current build requests exactly `account:read posts:read offline_access`**; write scopes are added when Cut/Create ship, which requires a re-consent.
+`account:read`, `posts:read`, `posts:write`, `ideas:read`, `ideas:write`, `offline_access`. Request only the scopes enabled on the app client. **Current build requests exactly `account:read posts:read posts:write offline_access`**, so Cut can delete. The idea scopes are added when the Essence editor ships; every added scope needs a re-consent.
 
 **Acceptance**
 
@@ -100,7 +100,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 ### 6.2 Queue declutter
 
-**Build status:** queue read and the Keep/Cut card are built; Cut is local only.
+**Build status:** queue read, the Keep/Cut card and the real Cut are built. The OAuth round trip has not been tested in a browser yet.
 
 **Input:** scheduled posts and drafts from the selected organization.
 
@@ -124,8 +124,8 @@ If nothing is flagged, go straight to the end screen.
 **Actions**
 
 - **Keep:** advance. No Buffer call. The post stays exactly as it is.
-- **Cut:** `deletePost`. The card is struck, dissolves, and the gap collapses. Focus moves to the next card's Keep action.
-- **Cut failure:** the card stays, the reason is replaced by "Buffer didn't delete that post. Try again." No local state is lost.
+- **Cut:** `deletePost`. The pencil draws while Buffer deletes; the card dissolves only once the delete is confirmed, then the gap collapses. Focus moves to the next card's Keep action.
+- **Cut failure:** the card stays, its reason is replaced by "Buffer couldn't delete that post. Try again." No local state is lost.
 
 **Merge (stretch, not v1):** only for same-channel near-duplicates. Edit the kept post to include the other's unique line, then delete the other. If either call fails, stop and explain what happened.
 
@@ -261,8 +261,8 @@ For the build:
 
 | Date | Outcome |
 |---|---|
-| Nov 6 | Scaffold, OAuth/session/queue API, queue card + Keep/Cut motion, end screen, deploy config (OAuth not browser-tested) |
-| Nov 7–8 | Wire Cut to `deletePost`, complete the browser OAuth round trip, keep/cut polish |
+| Nov 6 | Scaffold, OAuth/session/queue API, queue card + Keep/Cut motion, real Cut via `deletePost`, end screen, deploy config (OAuth not browser-tested) |
+| Nov 7–8 | Complete the browser OAuth round trip, keep/cut polish, Essence groundwork |
 | Nov 9 | Essence editor, diff, send to Buffer; hard decision point on auth if blocked |
 | Nov 10 | Queue audit, reasons, deterministic fallback, deploy |
 | Nov 11 | README, demo script, screenshot/GIF |
@@ -290,7 +290,7 @@ Update at the end of each session. **Last updated: Nov 6, 2026.**
 | Client scaffold | Done — Vite + React + TypeScript + Tailwind 3, local HTTPS on 5173 |
 | OAuth + session | Built server-side; not browser-tested (redirect URI not yet registered) |
 | Channels + queue read | Built server-side; the queue screen fetches the real queue |
-| Card + Keep/Cut | Built — card, strike/dissolve/collapse, keyboard, focus, live region, end screen; Cut is local only |
+| Card + Keep/Cut | Built — card, strike/dissolve/collapse, keyboard, focus, live region, end screen; Cut calls `deletePost` and keeps the card on failure |
 | Essence editor | Not started (placeholder page only) |
 | Queue audit | Not started |
 | Deploy | Config prepared (`vercel.json`, `docs/DEPLOY.md`); not deployed or smoke-tested |
@@ -304,11 +304,10 @@ These are real disagreements to settle, not silent edits to the product intent.
 |---|---|---|---|
 | 1 | Review only flagged items; go straight to the end screen if nothing is flagged. | Reviews every post, up to 20, in due-date order. No audit. | Keep all-posts review for v1 and rewrite this section, or build the audit first. |
 | 2 | Reasons include near-duplicates and over-posting. | Only `error` status ("This one didn't send.") and a past due date ("This was meant to go out already."). | These two are deterministic; the rest need the audit. |
-| 3 | Cut calls `deletePost`; a refresh in Buffer confirms it is gone. | Cut runs the motion and removes the card locally. A reload restores it. | Wire Cut, enable `posts:write`, re-consent. |
-| 4 | Input is scheduled posts and drafts. | Requests `scheduled`, `draft`, `error`, `needs_approval`. | Confirm the wider filter is intended; the PRD already treats `error` as stale. |
-| 5 | The queue is for the selected organization; if there are no channels, show a calm empty state. | The first organization is selected automatically. No organization or channel picker UI, the channels endpoint is not called by the UI, and a channel-less account falls through to the generic empty-queue message. | Confirm single-organization v1; decide whether a zero-channel empty state is needed. |
-| 6 | Scopes include `posts:write` and `ideas:*`. | Requests `account:read posts:read offline_access`. | Enable and request write scopes when mutations ship. |
-| 7 | End screen offers "Review again" when unflagged posts remain; sign out clears the session. | End offers "Back to Buffer" and "Start over" (a reload). No sign-out button, though `/api/auth/logout` exists. | Decide whether "Review again" and sign-out are in v1. |
+| 3 | Input is scheduled posts and drafts. | Requests `scheduled`, `draft`, `error`, `needs_approval`. | Confirm the wider filter is intended; the PRD already treats `error` as stale. |
+| 4 | The queue is for the selected organization; if there are no channels, show a calm empty state. | The first organization is selected automatically. No organization or channel picker UI, the channels endpoint is not called by the UI, and a channel-less account falls through to the generic empty-queue message. | Confirm single-organization v1; decide whether a zero-channel empty state is needed. |
+| 5 | Scopes include `ideas:read` and `ideas:write`. | Requests `account:read posts:read posts:write offline_access`. | Add the idea scopes when the Essence editor ships; each addition needs a re-consent. |
+| 6 | End screen offers "Review again" when unflagged posts remain; sign out clears the session. | End offers "Back to Buffer" and "Start over" (a reload). No sign-out button, though `/api/auth/logout` exists. | Decide whether "Review again" and sign-out are in v1. |
 
 ## 15. Open questions
 

@@ -1,7 +1,7 @@
 # Enough — Technical Architecture
 
 **Status:** living draft, v0.2, Nov 6 2026.
-**Source of truth:** the code. This document is reconciled to commit `73618bb`; update it after each session.
+**Source of truth:** the code. This document is reconciled after each session.
 **Related:** [PRD](PRD.md), [BUILD_LOG](../BUILD_LOG.md), [README](../README.md).
 
 Legend: **[built]** exists in the repo, **[planned]** agreed but not built, **[open]** needs a decision or verification.
@@ -35,7 +35,7 @@ Two hosting modes, one server codebase:
 enough/
   api/index.js                  Vercel entry: re-exports server/app.js; never listens
   server/
-    app.js                      Express app: session middleware, six routes, error handler
+    app.js                      Express app: session middleware, seven routes, error handler
     index.js                    local listener only (Node --watch)
     config.js                   env loading, redirect URI, host guard, scopes, session secret
     session.js                  iron-session wrapper
@@ -44,7 +44,7 @@ enough/
     main.tsx                    React entry
     App.tsx                     session load, dev demo bypass, Connect vs Queue
     types.ts                    client/server contract
-    lib/api.ts                  typed fetch helpers (session, channels, queue, logout)
+    lib/api.ts                  typed fetch helpers (session, channels, queue, cut, logout)
     lib/format.ts               date, subline, counts
     pages/Connect.tsx           connect screen
     pages/Queue.tsx             review session and motion state machine
@@ -137,12 +137,12 @@ Buffer requires HTTPS even on localhost and compares redirect URIs character for
 |---|---|---|
 | `account:read` | **requested** | account, organizations |
 | `posts:read` | **requested** | queue read |
+| `posts:write` | **requested** | Cut; later edit and create |
 | `offline_access` | **requested** | refresh token |
-| `posts:write` | planned | Cut, edit, create |
 | `ideas:read` | planned | Essence → idea destination |
 | `ideas:write` | planned | create an idea |
 
-`SCOPES` is exactly `account:read posts:read offline_access`. Adding write scopes requires enabling them on the app client and re-consenting.
+`SCOPES` is exactly `account:read posts:read posts:write offline_access`. Adding the idea scopes requires enabling them on the app client and re-consenting.
 
 ## 5. Buffer GraphQL layer
 
@@ -219,18 +219,20 @@ query Queue($organizationId: OrganizationId!, $first: Int!, $after: String) {
 - Status is lowercased into the `PostStatus` union.
 - The client sorts again by `dueAt` (nulls last) and caps the review at 20 cards.
 
-### Cut **[planned]**
+### Cut **[built]**
 
 ```graphql
 mutation DeletePost($input: DeletePostInput!) {
   deletePost(input: $input) {
     ... on DeletePostSuccess { id }
-    ... on MutationError { message }
+    ... on VoidMutationError { message }
   }
 }
 ```
 
-`DeletePostInput` is `{ id: PostId! }`. Only allow ids that were in the fetched queue; do not accept arbitrary ids from the browser. The client currently cuts locally and never calls this.
+`DeletePostPayload` is a union of `DeletePostSuccess | VoidMutationError`, not the generic `MutationError`. The route returns `{ ok: true }` only when Buffer returns a deleted id; a typed error becomes a 502 with "Buffer couldn't delete that post. Try again." The client draws the pencil while the request is in flight and dissolves the card only after it resolves, so a failure never implies a delete that did not happen.
+
+`DeletePostInput` is `{ id: PostId! }`. The signed-in session is the authorization boundary: the id belongs to the user's own queue, and Buffer rejects an id that is not theirs. The route additionally requires a same-origin request. It does not re-fetch the queue before deleting, so a post removed elsewhere still returns Buffer's typed error rather than a local "not found".
 
 ### Create **[planned]**
 
@@ -279,7 +281,7 @@ All JSON responses use `{ "error": "sentence-case message" }` with the matching 
 | GET | `/api/buffer/session` | — | `{ connected, account?, redirectUri, scope? }` | **built** |
 | GET | `/api/buffer/channels` | `organizationId` (required) | `{ channels }` | **built** |
 | GET | `/api/buffer/queue` | `organizationId` (required), `first?` | `{ posts: QueueCard[] }` | **built** |
-| POST | `/api/buffer/cut` | `{ postId }` | `{ ok: true }` | planned |
+| POST | `/api/buffer/cut` | `{ postId }` | `{ ok: true }` | **built** |
 | POST | `/api/buffer/create` | `{ kind, text, channelId?, mode?, dueAt?, title? }` | `{ post?, idea? }` | planned |
 | POST | `/api/ai/essence` | `{ text }` | `{ trimmed }` | planned |
 | POST | `/api/ai/audit` | `{ posts: [{id,text,channel,dueAt,status}] }` | `{ duplicates, stale, overPosting }` | planned |
@@ -310,7 +312,7 @@ type QueueCard = {
 - `Queue.tsx` holds the whole review session in local state: load status, the capped card list, index, done, kept/cut totals, the motion phase and visual flags, and the live-region message. There is no store and no `useQueue` hook.
 - The first organization on the account is selected automatically (`session.account.organizations[0]`). There is no organization or channel picker UI; `getChannels()` exists in `lib/api.ts` but is unused.
 - Read state is fetched, not duplicated. The queue is a snapshot taken on load; a refresh re-reads Buffer.
-- No mutation is wired. Keep makes no API call; Cut only changes local state, so a refresh brings the cut post back.
+- Keep makes no API call. Cut calls `POST /api/buffer/cut` and removes the card from local state only after the server confirms. A failed Cut keeps the card and shows the error in its reason line; the queue is untouched.
 - Errors render in place with a Try again action, not as alerts. A failed queue load also offers Reconnect.
 - `?demo=1` is a development-only fixture path. In `App.tsx`, `import.meta.env.DEV && ?demo=1` skips the session fetch and renders `QueuePage` with a fake session; `Queue.tsx` then loads `src/fixtures/cards.ts` instead of calling the API. `import.meta.env.DEV` is false in production builds, so the path cannot ship as a fake success.
 - Reduced motion is read with `useReducedMotion()` (a `matchMedia` listener), not only by CSS.
@@ -343,16 +345,16 @@ No AI code exists yet: there is no `server/ai.js`, no AI endpoint, and no provid
 
 ## 9. Motion implementation
 
-### Cut **[built, local only]**
+### Cut **[built]**
 
 `Queue.tsx` runs a four-phase machine: `idle → striking → leaving → collapsing → idle`.
 
-1. **Strike** (`striking`): add `.on` to `.struck`; the pencil line draws for **220ms**.
-2. **Leave** (`leaving`): after 220ms, add `.is-gone` to the card; the dissolve runs **320ms**. A `400ms` timer is a safety net if `animationend` never fires. `animationend` on the card itself also calls the collapse step.
+1. **Strike** (`striking`): add `.on` to `.struck`; the pencil line draws for **220ms**. At the same moment, `cutPost()` starts. The card does not move until Buffer confirms the delete.
+2. **Leave** (`leaving`): once the delete resolves and the strike has had its 220ms, add `.is-gone` to the card; the dissolve runs **320ms**. A `400ms` timer is a safety net if `animationend` never fires. `animationend` on the card itself also calls the collapse step.
 3. **Collapse** (`collapsing`): add `.collapsed` to the wrapping `.slot` (grid row `1fr → 0fr`, **280ms**).
 4. **Advance**: after 280ms, clear timers, increment the cut total, announce "Cut. N left.", reset the visual flags, advance the index, and move focus to the next card's Keep button.
 
-Reduced motion: strike wait 0ms, dissolve fallback 160ms (CSS animations run at 120ms), collapse wait 0ms. Focus and the announcement still happen.
+If the delete fails, the timers are cleared, `.struck.on` is removed, the phase returns to `idle`, the card stays, and the error replaces the reason line (`role="alert"`) and is announced. Reduced motion: strike wait 0ms, dissolve fallback 160ms (CSS animations run at 120ms), collapse wait 0ms. Focus and the announcement still happen.
 
 ### Keep **[built]**
 
@@ -365,7 +367,7 @@ Reduced motion: strike wait 0ms, dissolve fallback 160ms (CSS animations run at 
 - Each card is an `<article>` with real `<button>` actions; the `K`/`C` hints are `<kbd aria-hidden="true">`.
 - The Keep button is ref-forwarded; after advance, an effect focuses the next card's Keep button.
 - A visually hidden `aria-live="polite"` region announces "Kept. N left." or "Cut. N left."
-- The card carries `aria-busy` while a phase runs.
+- The card carries `aria-busy` while a phase runs, and both actions carry `aria-disabled` so they stay focusable but ignore input mid-phase.
 - `useReducedMotion()` feeds the JS timers; `enough.css` also reduces all animations to 120ms and transitions to 1ms.
 
 ### Essence **[planned]**
@@ -390,8 +392,8 @@ Reduced motion: strike wait 0ms, dissolve fallback 160ms (CSS animations run at 
 - OAuth `state` is one-time and verified; the PKCE verifier never leaves the server. **[built]**
 - Session cookie is encrypted and HttpOnly; no tokens in client JS, `localStorage` or `sessionStorage`. **[built]**
 - `Cache-Control: no-store, private` is set on every `/api` route. **[built]**
-- The browser never sends a Buffer token. It does send `organizationId`, which the server passes through without independently checking membership. Mutations must validate ids server-side when built. **[built read path / planned mutation path]**
-- CSRF: the OAuth callback is a top-level GET protected by `state`. `SameSite=Lax` blocks cross-site form posts. There is no explicit Origin check on future mutations. **[open]**
+- The browser never sends a Buffer token. It does send `organizationId` and a `postId`. The session authorizes both; Buffer rejects an id that is not the user's. There is no server-side check that `organizationId` belongs to the account, because Buffer scopes the response to the token anyway. **[built]**
+- CSRF: the OAuth callback is a top-level GET protected by `state`. `SameSite=Lax` blocks cross-site form posts, and `POST /api/buffer/cut` additionally requires the request `Origin` to match the registered callback's origin. A cross-origin JSON fetch cannot skip the preflight. **[built]**
 - Rate limits are per app client and shared by all users; the client backs off once for a short wait. **[built]**
 - `.env` is gitignored; `.env.example` contains placeholders only. Tokens and full auth headers are never logged. **[built]**
 - In production, a missing or short `SESSION_SECRET` fails startup loudly rather than silently generating per-instance keys. **[built]**
@@ -415,19 +417,19 @@ Build checks:
 
 Manual checks, with what is possible today:
 
-1. Local connect → consent → back → queue loads. **[blocked until the localhost redirect URI is registered and `account:read` / `posts:read` are enabled]**
+1. Local connect → consent → back → queue loads. **[blocked until the localhost redirect URI is registered and `account:read`, `posts:read`, `posts:write` and `offline_access` are enabled]**
 2. Queue returns real posts, sorted by `dueAt`, at most 20 cards. **[needs a session]**
 3. Keep makes no API call and advances. **[built]**
-4. Cut animates and removes the card locally; a refresh restores it. **[built; deletePost is not wired]**
-5. End screen shows "Enough." with kept/cut totals and receives focus. **[built]**
-6. `?demo=1` in `npm run dev` shows the fixture cards with no session. **[built]**
-7. Reduced motion: no strike wait or slide, state still updates. **[built]**
-8. Sign out: the endpoint clears the cookie, but no UI button calls it. **[API only]**
-9. Production: connect, read the queue, sign out, reconnect. **[not run; not deployed]**
+4. Cut deletes the post in Buffer; refresh Buffer to confirm it is gone. **[built; not exercised end to end]**
+5. A failed Cut keeps the card and shows the error in place. **[built; exercise by cutting a post removed in another tab]**
+6. End screen shows "Enough." with kept/cut totals and receives focus. **[built]**
+7. `?demo=1` in `npm run dev` shows the fixture cards with no session. **[built]**
+8. Reduced motion: no strike wait or slide, state still updates. **[built]**
+9. Sign out: the endpoint clears the cookie, but no UI button calls it. **[API only]**
+10. Production: connect, read the queue, cut a test post, sign out, reconnect. **[not run; not deployed]**
 
 ## 13. Known limitations
 
-- **Cut is local only.** No `deletePost` call; a reload restores cut posts. The PRD's destructive-cut behaviour is not implemented.
 - **No AI.** No Essence, no queue audit, no duplicate or over-posting reasons. Only two deterministic reasons exist, both client-side: `error` status and a `dueAt` in the past.
 - **No Merge**, as agreed for v1.
 - **No Essence editor.** `pages/Essence.tsx` is a placeholder, not routed.
@@ -436,7 +438,7 @@ Manual checks, with what is possible today:
 - Ideas are create-only; they cannot appear in Keep/Cut.
 - Cookie sessions cannot coordinate concurrent refreshes across tabs. Acceptable for v1; documented.
 - Queue is a load-time snapshot and only the first page (up to 50, reviewed as 20). Another device's changes appear on refresh.
-- No undo for Cut once it is wired; deleting is permanent.
+- **Cut has no undo.** It deletes immediately once Buffer confirms; the demo should use a test account.
 - Media-only posts are skipped.
 - Vercel's function rewrite path semantics are unconfirmed on a live deployment.
 - The localhost and production redirect URIs are not registered yet, so no browser OAuth round trip has been completed.
@@ -455,7 +457,7 @@ Prepared in `docs/DEPLOY.md`; **not executed**.
    - `AI_API_KEY` (when the provider is chosen)
 3. Register the production redirect URI on the Buffer app client, character for character. Keep the localhost URI registered too.
 4. Deploy. Confirm `vercel.json` routes `/api/*` to the function and static files are served.
-5. Smoke test on production: connect, load the queue, keep/cut through the cards, call `POST /api/auth/logout` (there is no UI button yet), reconnect. Cut does not delete yet, so do not use a real queue to prove deletion.
+5. Smoke test on production: connect, load the queue, keep through a card, cut a **test** post, confirm it is gone in Buffer, call `POST /api/auth/logout` (there is no UI button yet), reconnect.
 6. Do not use a preview deployment for OAuth unless its redirect URI is registered and `REDIRECT_URI` is set for it; cookies cannot cross hosts.
 
 ## 15. Decision log
@@ -473,9 +475,12 @@ Prepared in `docs/DEPLOY.md`; **not executed**.
 | D9 | Sort the queue in JavaScript | The `SortDirection` enum spelling is unverified; sorting normalized posts is safe and testable. |
 | D10 | Fixtures behind `DEV && ?demo=1` | Design and motion can be built without a Buffer session; production builds drop the path. |
 | D11 | Select the first organization automatically | One organization keeps v1 small; a picker is deferred. |
-| D12 | Request only read scopes now | The read path ships first; write scopes wait for mutations and a re-consent. |
+| D12 | Request only the scopes a slice uses | The read path shipped first; `posts:write` was added with Cut and needs one re-consent. |
 | D13 | Derive card reasons on the client | Status and due date are already in the queue payload; no server reason field yet. |
 | D14 | Fetch queue then channels sequentially | Both calls share one session; parallel refreshes could rotate the refresh token twice. |
+| D15 | Delete first, dissolve second | The card only leaves after Buffer confirms, so a failed Cut cannot look like a success. |
+| D16 | No queue re-fetch before Cut | The session already authorizes the user's own post; Buffer rejects anything else. One fewer call keeps the strike immediate. |
+| D17 | Require a same-origin `Origin` on mutations | Cheap, explicit CSRF defence that does not depend on `SameSite` alone. |
 
 ## 16. Open technical questions
 
@@ -483,7 +488,6 @@ Prepared in `docs/DEPLOY.md`; **not executed**.
 2. Does `deletePost` succeed for `error` status posts?
 3. Vercel rewrite: confirm `/api/(.*)` → `/api` preserves the Express path.
 4. Production domain and the exact registered redirect URIs.
-5. Whether to add an explicit Origin check on mutations.
-6. Review set: keep reviewing **all** posts (current code) or restore flagged-only from the PRD? This needs a product decision before the audit is built.
-7. Pagination: is the first 50 enough, or should the client follow `pageInfo` before capping at 20?
-8. Where should sign-out live now that `/api/auth/logout` exists but nothing calls it?
+5. Review set: keep reviewing **all** posts (current code) or restore flagged-only from the PRD? This needs a product decision before the audit is built.
+6. Pagination: is the first 50 enough, or should the client follow `pageInfo` before capping at 20?
+7. Where should sign-out live now that `/api/auth/logout` exists but nothing calls it?

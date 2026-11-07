@@ -8,8 +8,9 @@ through `api/index.js`.
 
 In Buffer, open **Settings → API** and create (or edit) the app client.
 
-1. Enable the **`account:read`** and **`posts:read`** scopes. `offline_access`
-   is required for refresh tokens, so enable it too if it is listed.
+1. Enable **`account:read`**, **`posts:read`**, **`posts:write`**, and
+   **`offline_access`**. `posts:write` is what lets Cut delete a post;
+   `offline_access` is required for refresh tokens.
 2. Register both redirect URIs, character for character:
    - Local: `https://localhost:5173/api/auth/callback`
    - Production: `https://<your-domain>/api/auth/callback`
@@ -60,6 +61,8 @@ subdomain will fail the token exchange.
 2. Approve the listed scopes on Buffer. You should land back on `/` and see
    the queue for the first organization on the account.
 3. Reload the page; the connection should survive (the sealed session cookie).
+4. Cut one **test** post and confirm it is gone in Buffer. A failed Cut keeps
+   the card and shows the error in place.
 5. `curl -s https://<your-domain>/api/buffer/session` with the session cookie
    should show `connected: true` and the same `redirectUri` registered above.
 
