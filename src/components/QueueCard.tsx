@@ -18,6 +18,7 @@ type QueueCardViewProps = {
   kept: boolean
   gone: boolean
   busy: boolean
+  entering: boolean
   error?: string | null
   onKeep: () => void
   onCut: () => void
@@ -26,10 +27,16 @@ type QueueCardViewProps = {
 
 export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
   function QueueCardView(
-    { card, struck, kept, gone, busy, error, onKeep, onCut, onAnimationEnd },
+    { card, struck, kept, gone, busy, entering, error, onKeep, onCut, onAnimationEnd },
     keepRef,
   ) {
-    const cardClass = ['card', 'sheet', kept ? 'is-kept' : '', gone ? 'is-gone' : '']
+    const cardClass = [
+      'card',
+      'sheet',
+      entering ? 'is-entering' : '',
+      kept ? 'is-kept' : '',
+      gone ? 'is-gone' : '',
+    ]
       .filter(Boolean)
       .join(' ')
     const mediaLabel = card.asset?.type === 'video' ? 'Video post' : 'Image post'

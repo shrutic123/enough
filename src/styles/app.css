@@ -195,26 +195,26 @@ a.act {
 /* Two faint outlined sheets sit behind the card. A transparent fill keeps the
    edges reading as paper, not as a drop shadow. */
 .card.sheet {
+  position: relative;
   padding: 44px 48px;
 }
 
 .sheet-stack {
   position: relative;
-  padding-bottom: 0;
-  transition: padding-bottom 220ms var(--ease);
-}
-
-.sheet-stack.stacked {
+  /* Room for the kept card to slide down under the pile before it fades. */
   padding-bottom: 16px;
 }
 
 .stack-edge {
   position: absolute;
-  top: 0;
+  /* Start below the card's top edge so a keeping card never reveals a stray
+     outline above itself as it slides back into the pile. */
+  top: 24px;
   right: 0;
   left: 0;
   border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
-  border-radius: var(--radius);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
   opacity: 0;
   transition: opacity 220ms var(--ease);
   pointer-events: none;
@@ -233,7 +233,7 @@ a.act {
   opacity: 1;
 }
 
-.sheet-stack.stacked.leaving .stack-edge {
+.sheet-stack.leaving .stack-edge {
   opacity: 0;
 }
 
@@ -341,15 +341,119 @@ a.act {
   100% { opacity: 0; transform: translateY(-1px); }
 }
 
-/* Keep sets the sheet down; Cut keeps its strike and blur. */
+/* Keep returns the top card to the pile: a small lift, then down and back
+   under the sheet edges. Cut crumples the marked card into a scrap. */
 .card.sheet.is-kept {
-  animation: keep-settle 220ms var(--ease) forwards;
+  transform-origin: 50% 100%;
+  animation: keep-back 220ms var(--ease) forwards;
 }
 
-@keyframes keep-settle {
-  0% { opacity: 1; transform: translateY(0); }
-  55% { opacity: 0.92; transform: translateY(2px); }
-  100% { opacity: 0; transform: translateY(4px); }
+@keyframes keep-back {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  28% { transform: translateY(-5px) scale(1.004); opacity: 1; }
+  62% { transform: translateY(14px) scale(0.986); opacity: 1; }
+  100% { transform: translateY(16px) scale(0.985); opacity: 0; }
+}
+
+.card.sheet.is-entering {
+  animation: card-in 200ms var(--ease) both;
+}
+
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(7px) scale(0.996); }
+  to { opacity: 1; transform: none; }
+}
+
+.card.sheet.is-gone {
+  transform-origin: 62% 72%;
+  filter: blur(0);
+  animation: crumple 520ms cubic-bezier(0.55, 0.06, 0.25, 1) forwards;
+}
+
+/* Crease lines fade in as the sheet folds, so the shrinking shape still reads
+   as paper rather than as a card being scaled away. */
+.card.sheet.is-gone::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(78deg, transparent 46.6%, color-mix(in srgb, var(--ink) 10%, transparent) 47.6%, transparent 49%),
+    linear-gradient(-54deg, transparent 61.4%, color-mix(in srgb, var(--ink) 8%, transparent) 62.4%, transparent 63.6%),
+    linear-gradient(108deg, transparent 27.4%, color-mix(in srgb, var(--ink) 6%, transparent) 28.4%, transparent 29.8%),
+    linear-gradient(-86deg, transparent 72.8%, color-mix(in srgb, var(--ink) 5%, transparent) 74%, transparent 75.6%);
+  filter: blur(0.4px);
+  opacity: 0;
+  animation: crease-in 520ms cubic-bezier(0.55, 0.06, 0.25, 1) forwards;
+}
+
+@keyframes crease-in {
+  0% { opacity: 0; }
+  40% { opacity: 1; }
+  100% { opacity: 0.7; }
+}
+
+/* The words leave first, so the motion reads as blank paper being crushed. */
+.card.sheet.is-gone .card-top,
+.card.sheet.is-gone .card-sub,
+.card.sheet.is-gone .card-why,
+.card.sheet.is-gone .actions {
+  animation: content-out 160ms ease forwards;
+}
+
+@keyframes content-out {
+  to { opacity: 0; }
+}
+
+/* The clip-path bites ragged chunks out of the sheet while the transform
+   folds it inward, so the motion reads as paper being crushed rather than a
+   card being scaled down. The 44% stop holds the buckle long enough to see
+   the sheet bend before it wads up. Every frame keeps eight points so the
+   shape interpolates smoothly. */
+@keyframes crumple {
+  0% {
+    clip-path: polygon(0% 0%, 50% 0%, 100% 0%, 100% 50%, 100% 100%, 50% 100%, 0% 100%, 0% 50%);
+    border-radius: 14px;
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(1) rotate(0) skewX(0) skewY(0) translate(0, 0);
+  }
+  20% {
+    clip-path: polygon(1% 2%, 49% 0%, 98% 3%, 100% 49%, 97% 97%, 51% 100%, 2% 95%, 0% 51%);
+    border-radius: 16px;
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(0.985, 0.94) rotate(-0.7deg) skewX(1.2deg) skewY(-0.3deg) translate(0, 0);
+  }
+  44% {
+    clip-path: polygon(3% 5%, 46% 0%, 96% 8%, 99% 47%, 94% 95%, 53% 100%, 4% 91%, 0% 46%);
+    border-radius: 20px;
+    opacity: 1;
+    filter: blur(0);
+    transform: scale(0.9, 0.8) rotate(-2.4deg) skewX(5deg) skewY(-1.6deg) translate(0, 2px);
+  }
+  70% {
+    clip-path: polygon(8% 10%, 44% 0%, 94% 14%, 84% 46%, 98% 87%, 57% 100%, 3% 92%, 0% 40%);
+    border-radius: 24px;
+    opacity: 0.95;
+    filter: blur(0.3px);
+    transform: scale(0.62, 0.49) rotate(3deg) skewX(-7deg) skewY(2.8deg) translate(-3px, 8px);
+  }
+  88% {
+    clip-path: polygon(18% 22%, 43% 7%, 79% 25%, 67% 51%, 85% 80%, 56% 89%, 18% 74%, 10% 46%);
+    border-radius: 30px;
+    opacity: 0.5;
+    filter: blur(0.7px);
+    transform: scale(0.33, 0.24) rotate(6.4deg) skewX(4deg) skewY(-3deg) translate(-1px, 18px);
+  }
+  100% {
+    clip-path: polygon(32% 34%, 47% 27%, 66% 37%, 60% 52%, 68% 66%, 51% 70%, 35% 62%, 30% 48%);
+    border-radius: 36px;
+    opacity: 0;
+    filter: blur(1.1px);
+    transform: scale(0.12, 0.08) rotate(10deg) skewX(1.8deg) skewY(-1.2deg) translate(2px, 24px);
+  }
 }
 
 @media (max-width: 900px) {
@@ -361,6 +465,29 @@ a.act {
 @media (prefers-reduced-motion: reduce) {
   .card.sheet.is-kept {
     animation-name: keep-fade;
+    animation-duration: 120ms;
+  }
+
+  .card.sheet.is-gone {
+    animation-name: crumple-fade;
+    animation-duration: 160ms;
+    filter: none;
+  }
+
+  .card.sheet.is-gone::after {
+    display: none;
+  }
+
+  .card.sheet.is-gone .card-top,
+  .card.sheet.is-gone .card-sub,
+  .card.sheet.is-gone .card-why,
+  .card.sheet.is-gone .actions {
+    animation: none;
+  }
+
+  .card.sheet.is-entering {
+    animation-name: card-fade-in;
+    animation-duration: 120ms;
   }
 
   .keep-note.on {
@@ -369,6 +496,15 @@ a.act {
 
   @keyframes keep-fade {
     to { opacity: 0; }
+  }
+
+  @keyframes crumple-fade {
+    to { opacity: 0; }
+  }
+
+  @keyframes card-fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   @keyframes keep-note-fade {

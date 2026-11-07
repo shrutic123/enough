@@ -12,10 +12,12 @@ import EssencePage from './Essence'
 const MAX_CARDS = 20
 const STRIKE_MS = 220
 const KEEP_MS = 220
+const ENTER_MS = 200
 const COLLAPSE_MS = 280
-const DISSOLVE_FALLBACK_MS = 400
+const LEAVE_FALLBACK_MS = 720
 const REDUCED_KEEP_MS = 120
-const REDUCED_DISSOLVE_FALLBACK_MS = 160
+const REDUCED_ENTER_MS = 120
+const REDUCED_LEAVE_FALLBACK_MS = 160
 
 type Phase = 'idle' | 'striking' | 'leaving' | 'collapsing'
 type LoadState = 'loading' | 'ready' | 'error'
@@ -95,6 +97,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const [keptVisual, setKeptVisual] = useState(false)
   const [gone, setGone] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [entering, setEntering] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const [cutError, setCutError] = useState<string | null>(null)
 
@@ -199,13 +202,18 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
 
     if (nextIndex >= total) {
       pendingFocusRef.current = false
+      setEntering(false)
       setDone(true)
       return
     }
 
     setIndex(nextIndex)
     pendingFocusRef.current = true
-  }, [clearTimers])
+    // The next card rises into place, so the stack reads as a pile rather than
+    // a text swap. The first card does not animate.
+    setEntering(true)
+    later(() => setEntering(false), reduced ? REDUCED_ENTER_MS : ENTER_MS)
+  }, [clearTimers, later, reduced])
 
   const beginCollapse = useCallback(() => {
     if (phaseRef.current !== 'leaving') return
@@ -226,10 +234,10 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     goneRef.current = true
     setGone(true)
 
-    // Safety net in case the dissolve animation never reports animationend.
+    // Safety net in case the crumple animation never reports animationend.
     later(
       beginCollapse,
-      reduced ? REDUCED_DISSOLVE_FALLBACK_MS : DISSOLVE_FALLBACK_MS,
+      reduced ? REDUCED_LEAVE_FALLBACK_MS : LEAVE_FALLBACK_MS,
     )
   }, [beginCollapse, later, reduced])
 
@@ -335,7 +343,9 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const stackClass = [
     'sheet-stack',
     remaining > 1 ? 'stacked' : '',
-    gone || keptVisual ? 'leaving' : '',
+    // The pile dims as the slot closes, so a keep or a cut never leaves an
+    // empty outline hanging in the page while the next card is missing.
+    gone || collapsed ? 'leaving' : '',
   ]
     .filter(Boolean)
     .join(' ')
@@ -439,6 +449,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
                   kept={keptVisual}
                   gone={gone}
                   busy={phase !== 'idle'}
+                  entering={entering && phase === 'idle'}
                   error={cutError}
                   onKeep={handleKeep}
                   onCut={handleCut}
