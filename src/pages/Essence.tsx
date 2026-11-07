@@ -175,7 +175,7 @@ export default function EssencePage({
 
     // Defer the fetch out of the click handler; React's event handling was
     // swallowing the promise resolution otherwise.
-    setTimeout(() => {
+    window.setTimeout(() => {
       fetch('/api/ai/essence', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -188,9 +188,7 @@ export default function EssencePage({
         })
         .then((response) => {
           if (!mounted.current) return
-          if (draftRef.current !== source) {
-            return
-          }
+          if (draftRef.current !== source) return
 
           clearAnimation()
           const nextParts = diffText(source, response.trimmed)
@@ -230,8 +228,6 @@ export default function EssencePage({
           if (mounted.current) setTrimming(false)
         })
     }, 0)
-
-    return
   }
 
   async function handleSend() {
