@@ -374,7 +374,7 @@ If the delete fails, the timers are cleared, `.struck.on` is removed, the phase 
 
 ### Sound **[built]**
 
-- The crumple sound is synthesized in `src/lib/sound.ts`: a dense series of 150 tiny band-passed noise snaps (1.5-6 ms) over 0.36 s, with a few slightly longer folds, plus a short room tail. This is the auditioned candidate the user chose; it reads as paper folding rather than water or a tap. Master gain **0.22**; about −28 dBFS peak, −53 dBFS RMS. No audio file ships.
+- The crumple sound is synthesized in `src/lib/sound.ts`: a dense series of 150 tiny band-passed noise snaps (1.5-6 ms) over 0.36 s, with a few slightly longer folds, plus a short room tail. This is the auditioned candidate the user chose; it reads as paper folding rather than water or a tap. Master gain **0.3**; about −22 dBFS peak, −47 dBFS RMS. No audio file ships.
 - It is primed on the Cut click (the gesture that permits audio) and played in `beginLeaving`, i.e. only after Buffer confirms the delete. Keep, entry, hover and a failed Cut are silent.
 - Turning the toggle on previews the same rustle at 0.75 gain, so the setting is audible before the next cut. Turning it off is silent.
 - It returns early when the tab is hidden, so a background tab cannot make noise.

@@ -92,8 +92,9 @@ export function playCrumpleSound(level = 1): void {
 
   const now = audio.currentTime
   const master = audio.createGain()
-  // A crumple is quiet by nature: a dense, dry crackle, not a warning.
-  master.gain.value = 0.22 * level
+  // A crumple is quiet by nature: a dense, dry crackle, not a warning. 0.3 keeps
+  // it audible on laptop speakers without reading as a notification.
+  master.gain.value = 0.3 * level
   master.connect(audio.destination)
 
   // A short room tail keeps the snaps from sounding synthetic, matching the
