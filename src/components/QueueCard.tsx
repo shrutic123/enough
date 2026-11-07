@@ -1,4 +1,5 @@
 import { forwardRef } from 'react'
+import type { Ref } from 'react'
 import type { QueueCard } from '../types'
 import { formatCardSubline } from '../lib/format'
 
@@ -23,11 +24,12 @@ type QueueCardViewProps = {
   onKeep: () => void
   onCut: () => void
   onAnimationEnd: () => void
+  cutRef?: Ref<HTMLButtonElement>
 }
 
 export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
   function QueueCardView(
-    { card, struck, kept, gone, busy, entering, error, onKeep, onCut, onAnimationEnd },
+    { card, struck, kept, gone, busy, entering, error, onKeep, onCut, onAnimationEnd, cutRef },
     keepRef,
   ) {
     const cardClass = [
@@ -82,6 +84,7 @@ export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
             Keep <kbd aria-hidden="true">K</kbd>
           </button>
           <button
+            ref={cutRef}
             className="act"
             type="button"
             aria-disabled={busy || undefined}

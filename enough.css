@@ -65,6 +65,16 @@ body {
 .act kbd { font: inherit; color: var(--graphite); margin-left: 6px; }
 .act:hover { text-decoration: underline; text-underline-offset: 4px; }
 :focus-visible { outline: 2px solid var(--pencil); outline-offset: 3px; border-radius: 4px; }
+/* Some browsers keep the ring suppressed after a pointer click even once the
+   user starts tabbing. Forcing it on after keyboard input keeps focus visible. */
+html[data-input='keyboard'] button:focus,
+html[data-input='keyboard'] a:focus,
+html[data-input='keyboard'] textarea:focus,
+html[data-input='keyboard'] [role='button']:focus {
+  outline: 2px solid var(--pencil);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
 
 /* ---------- Motion 1: the pencil strike (answers a click, so it's welcome) ---------- */
 .struck {

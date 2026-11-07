@@ -3,6 +3,7 @@ import { getSession } from './lib/api'
 import type { SessionResponse } from './types'
 import ConnectPage from './pages/Connect'
 import QueuePage from './pages/Queue'
+import { useInputModality } from './hooks/useInputModality'
 
 const DEMO_SESSION: SessionResponse = {
   connected: true,
@@ -14,6 +15,7 @@ const DEMO_SESSION: SessionResponse = {
 }
 
 export default function App() {
+  useInputModality()
   const [session, setSession] = useState<SessionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const isDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === '1'

@@ -12,6 +12,7 @@ Short, dated entries. This is the evidence of what was built inside the contest 
 - Stuck on: Production deployment and the production redirect URI are still open. The network guard and the new design pass are checked in the browser via the demo queue, not against a live send.
 - Next: Deploy to Vercel, register the production callback, smoke test, then record the demo video.
 - Later, Nov 7: Anchored the review screen so the count and the sheet's top edge stay fixed while card heights change; the card keeps its natural height and the page, not the card, scrolls. Added the persisted text-only crumple-sound toggle; the rustle is synthesized and plays only after Buffer confirms a cut, never on Keep. Wrote the first `npm test` suite (Node's test runner, no new dependencies) for the sound preference: 8 tests including blocked storage. The layout fix was checked red/green in the browser: header top moved 159-324px across six cards before, then held at 229px for all six after.
+- Later, Nov 7 (continued): Reworked the rustle from a six-grain tap into four clustered bursts of 2.5-10 ms snaps so it reads as paper folding rather than water or a pen tap; master gain 0.22 (about -24 dBFS peak). Added a preview when the toggle turns on. Moved keyboard focus to Cut before the crumple begins, and added an input-modality tracker so the focus ring reliably reappears after a pointer click once the user starts tabbing. Verified in the browser: Tab after a mouse Keep now shows the blue ring on Cut and Keep.
 
 ## Day 3 - [date]
 - Done:

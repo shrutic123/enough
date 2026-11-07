@@ -117,6 +117,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const decisionRef = useRef<Decision | null>(null)
   const pendingFocusRef = useRef(false)
   const keepButtonRef = useRef<HTMLButtonElement>(null)
+  const cutButtonRef = useRef<HTMLButtonElement>(null)
   const mountedRef = useRef(true)
 
   const clearTimers = useCallback(() => {
@@ -264,8 +265,13 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     setStruck(true)
     setCutError(null)
 
+    // The focus ring should name the decision that is actually running. It
+    // moves to Cut before the strike and the crumple begin, so a keyboard user
+    // never sees Keep focused while the card is being cut.
+    cutButtonRef.current?.focus()
+
     // A cut click is the gesture that lets the audio context start.
-    if (soundOn) primeCrumpleSound()
+    if (soundOn) void primeCrumpleSound()
 
     // The pencil draws while Buffer deletes. The card only dissolves once the
     // delete is confirmed, so a failure leaves the queue and the card intact.
@@ -308,13 +314,14 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   }, [beginCollapse, later, reduced])
 
   const toggleSound = useCallback(() => {
-    setSoundOn((on) => {
-      const next = !on
-      writeSoundPreference(browserStorage(), next)
-      if (next) primeCrumpleSound()
-      return next
-    })
-  }, [])
+    const next = !soundOn
+    setSoundOn(next)
+    writeSoundPreference(browserStorage(), next)
+
+    // Turning it on previews the paper at a softer level, so the setting is
+    // audible immediately rather than only after the next confirmed cut.
+    if (next) void primeCrumpleSound().then(() => playCrumpleSound(0.75))
+  }, [soundOn])
 
   const handleCardAnimationEnd = useCallback(() => {
     if (goneRef.current) beginCollapse()
@@ -489,6 +496,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
                   onKeep={handleKeep}
                   onCut={handleCut}
                   onAnimationEnd={handleCardAnimationEnd}
+                  cutRef={cutButtonRef}
                 />
               </div>
             </div>

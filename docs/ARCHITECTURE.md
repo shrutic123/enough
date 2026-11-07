@@ -374,9 +374,11 @@ If the delete fails, the timers are cleared, `.struck.on` is removed, the phase 
 
 ### Sound **[built]**
 
-- The crumple sound is synthesized in `src/lib/sound.ts`: four short noise grains through a band-pass and high-pass, one master gain at **0.045**. No audio file ships.
+- The crumple sound is synthesized in `src/lib/sound.ts`: a dense series of 150 tiny band-passed noise snaps (1.5-6 ms) over 0.36 s, with a few slightly longer folds, plus a short room tail. This is the auditioned candidate the user chose; it reads as paper folding rather than water or a tap. Master gain **0.22**; about −28 dBFS peak, −53 dBFS RMS. No audio file ships.
 - It is primed on the Cut click (the gesture that permits audio) and played in `beginLeaving`, i.e. only after Buffer confirms the delete. Keep, entry, hover and a failed Cut are silent.
+- Turning the toggle on previews the same rustle at 0.75 gain, so the setting is audible before the next cut. Turning it off is silent.
 - It returns early when the tab is hidden, so a background tab cannot make noise.
+- Focus: when a cut begins, focus moves to the Cut button before the strike and crumple, so the ring names the decision in flight. A small input-modality tracker (`src/hooks/useInputModality.ts`) forces the focus ring on after keyboard input, covering browsers that keep it suppressed after a pointer click.
 - A text toggle in the queue header shows `Sound off` / `Sound on`, with an `aria-label` that names the action. The preference is stored under `enough.sound` in `localStorage`; blocked storage reads fall back to sound on and blocked writes are ignored.
 - `npm test` (Node's built-in runner) covers the preference helpers, including the blocked-storage cases.
 

@@ -50,67 +50,114 @@ function audioContext(): AudioContext | null {
 }
 
 /** Call from a user gesture so the browser lets the context start. */
-export function primeCrumpleSound(): void {
+export function primeCrumpleSound(): Promise<void> {
   const audio = audioContext()
-  if (!audio) return
+  if (!audio) return Promise.resolve()
 
-  if (audio.state === 'suspended') void audio.resume()
+  const ready = audio.state === 'suspended' ? audio.resume() : Promise.resolve()
 
-  if (!noise) {
-    const frames = Math.floor(audio.sampleRate * 0.2)
-    noise = audio.createBuffer(1, frames, audio.sampleRate)
-    const data = noise.getChannelData(0)
-    for (let i = 0; i < frames; i += 1) {
-      data[i] = (Math.random() * 2 - 1) * 0.7
-    }
-  }
+  return ready
+    .catch(() => {
+      // A browser that refuses to resume still leaves the toggle working; the
+      // next Cut will try again.
+    })
+    .then(() => {
+      if (!noise) {
+        const frames = Math.floor(audio.sampleRate * 0.3)
+        noise = audio.createBuffer(1, frames, audio.sampleRate)
+        const data = noise.getChannelData(0)
+        for (let i = 0; i < frames; i += 1) {
+          data[i] = (Math.random() * 2 - 1) * 0.8
+        }
+      }
+    })
 }
 
-export function playCrumpleSound(): void {
+/** `level` scales the whole gesture; the toggle preview uses less than a cut. */
+export function playCrumpleSound(level = 1): void {
   const audio = audioContext()
-  if (!audio || !noise || audio.state !== 'running') return
+  if (!audio || !noise) return
+
+  if (audio.state === 'suspended') {
+    // The cut's click already primed the context; if it is still waking up,
+    // let it finish rather than dropping the sound.
+    void audio.resume().then(() => {
+      if (audio.state === 'running') playCrumpleSound(level)
+    })
+    return
+  }
+
+  if (audio.state !== 'running') return
   if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
 
   const now = audio.currentTime
   const master = audio.createGain()
-  master.gain.value = 0.045
+  // A crumple is quiet by nature: a dense, dry crackle, not a warning.
+  master.gain.value = 0.22 * level
   master.connect(audio.destination)
 
-  // Four grains at slightly different bands read as one sheet being crushed.
-  const grains = [
-    { at: 0, dur: 0.055, freq: 2100 },
-    { at: 0.045, dur: 0.06, freq: 2600 },
-    { at: 0.095, dur: 0.07, freq: 1800 },
-    { at: 0.145, dur: 0.05, freq: 3100 },
-  ]
+  // A short room tail keeps the snaps from sounding synthetic, matching the
+  // auditioned candidate the user chose.
+  const bus = audio.createGain()
+  bus.connect(master)
+  for (const [delay, amount] of [[0.009, 0.5], [0.017, 0.32], [0.031, 0.18]]) {
+    const node = audio.createDelay(0.1)
+    node.delayTime.value = delay
+    const gain = audio.createGain()
+    gain.gain.value = amount * 0.25
+    bus.connect(node)
+    node.connect(gain)
+    gain.connect(master)
+  }
 
-  for (const grain of grains) {
+  /** One short filtered-noise grain. Tiny durations are what make it crinkle. */
+  const grain = (at: number, dur: number, freq: number, q: number, peak: number) => {
     const source = audio.createBufferSource()
     source.buffer = noise
     source.loop = true
-    source.playbackRate.value = 0.9 + Math.random() * 0.25
+    source.playbackRate.value = 0.8 + Math.random() * 0.5
 
     const band = audio.createBiquadFilter()
     band.type = 'bandpass'
-    band.frequency.value = grain.freq + Math.random() * 300
-    band.Q.value = 0.8
+    band.frequency.value = freq
+    band.Q.value = q
 
-    const high = audio.createBiquadFilter()
-    high.type = 'highpass'
-    high.frequency.value = 700
-
-    const gain = audio.createGain()
-    const start = now + grain.at
-    gain.gain.setValueAtTime(0.0001, start)
-    gain.gain.exponentialRampToValueAtTime(0.9, start + 0.008)
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + grain.dur)
+    const envelope = audio.createGain()
+    envelope.gain.setValueAtTime(0.0001, at)
+    envelope.gain.linearRampToValueAtTime(peak, at + 0.0004)
+    envelope.gain.exponentialRampToValueAtTime(0.0001, at + dur)
 
     source.connect(band)
-    band.connect(high)
-    high.connect(gain)
-    gain.connect(master)
+    band.connect(envelope)
+    envelope.connect(bus)
 
-    source.start(start)
-    source.stop(start + grain.dur + 0.03)
+    source.start(at)
+    source.stop(at + dur + 0.01)
+  }
+
+  // A real crumple is a dense series of tiny snaps, not a wash. Times bunch
+  // toward the start, with quieter snaps as the sheet becomes a ball.
+  const count = 150
+  for (let i = 0; i < count; i += 1) {
+    const t = Math.pow(Math.random(), 1.5) * 0.36
+    const fade = 1 - 0.55 * (t / 0.36)
+    grain(
+      now + t,
+      0.0015 + Math.pow(Math.random(), 3) * 0.006,
+      1500 + Math.random() * 5500,
+      2 + Math.random() * 6,
+      (0.12 + Math.random() * 0.75) * fade,
+    )
+  }
+
+  // A few slightly longer folds give the burst a beginning and an end to hear.
+  for (let i = 0; i < 4; i += 1) {
+    grain(
+      now + 0.02 + Math.random() * 0.2,
+      0.012 + Math.random() * 0.014,
+      900 + Math.random() * 900,
+      1.1,
+      0.16,
+    )
   }
 }
