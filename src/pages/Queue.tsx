@@ -12,6 +12,7 @@ import {
 } from '../lib/sound'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { QueueCardView, type ReviewCard } from '../components/QueueCard'
+import Crumple from '../components/Crumple'
 import { fixtureCards } from '../fixtures/cards'
 import EndPage from './End'
 import EssencePage from './Essence'
@@ -118,6 +119,9 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const pendingFocusRef = useRef(false)
   const keepButtonRef = useRef<HTMLButtonElement>(null)
   const cutButtonRef = useRef<HTMLButtonElement>(null)
+  const cardRef = useRef<HTMLElement | null>(null)
+  const [crumpling, setCrumpling] = useState(false)
+  const [crumpleTarget, setCrumpleTarget] = useState<HTMLElement | null>(null)
   const mountedRef = useRef(true)
 
   const clearTimers = useCallback(() => {
@@ -198,6 +202,8 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     setKeptVisual(false)
     setCollapsed(false)
     setCutError(null)
+    setCrumpling(false)
+    setCrumpleTarget(null)
 
     if (decision === 'keep') {
       setKept((value) => value + 1)
@@ -246,6 +252,12 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     // The sound is the paper, not a notification: it starts with the crumple.
     if (soundOn) playCrumpleSound()
 
+    // The blank sheet crumples after the words leave. The canvas takes over
+    // from the now-hidden card.
+    const target = cardRef.current ?? document.querySelector('article.card')
+    setCrumpleTarget(target as HTMLElement | null)
+    setCrumpling(true)
+
     // Safety net in case the crumple animation never reports animationend.
     later(
       beginCollapse,
@@ -292,6 +304,8 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
         phaseRef.current = 'idle'
         setPhase('idle')
         setStruck(false)
+        setCrumpling(false)
+        setCrumpleTarget(null)
 
         const message =
           reason instanceof Error && reason.message
@@ -322,6 +336,12 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     // audible immediately rather than only after the next confirmed cut.
     if (next) void primeCrumpleSound().then(() => playCrumpleSound(0.75))
   }, [soundOn])
+
+  const handleCrumpleDone = useCallback(() => {
+    setCrumpling(false)
+    setCrumpleTarget(null)
+    beginCollapse()
+  }, [beginCollapse])
 
   const handleCardAnimationEnd = useCallback(() => {
     if (goneRef.current) beginCollapse()
@@ -497,6 +517,14 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
                   onCut={handleCut}
                   onAnimationEnd={handleCardAnimationEnd}
                   cutRef={cutButtonRef}
+                  cardRef={(node) => {
+                    cardRef.current = node
+                  }}
+                />
+                <Crumple
+                  active={crumpling}
+                  target={crumpleTarget}
+                  onDone={handleCrumpleDone}
                 />
               </div>
             </div>

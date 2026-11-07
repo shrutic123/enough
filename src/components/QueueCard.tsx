@@ -25,11 +25,12 @@ type QueueCardViewProps = {
   onCut: () => void
   onAnimationEnd: () => void
   cutRef?: Ref<HTMLButtonElement>
+  cardRef?: (node: HTMLElement | null) => void
 }
 
 export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
   function QueueCardView(
-    { card, struck, kept, gone, busy, entering, error, onKeep, onCut, onAnimationEnd, cutRef },
+    { card, struck, kept, gone, busy, entering, error, onKeep, onCut, onAnimationEnd, cutRef, cardRef },
     keepRef,
   ) {
     const cardClass = [
@@ -46,6 +47,7 @@ export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
 
     return (
       <article
+        ref={cardRef}
         className={cardClass}
         aria-busy={busy || undefined}
         onAnimationEnd={(event) => {

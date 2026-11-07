@@ -354,7 +354,7 @@ There is no queue audit. Deterministic reasons (error status, a past `dueAt`) ar
 `Queue.tsx` runs a four-phase machine: `idle → striking → leaving → collapsing → idle`.
 
 1. **Strike** (`striking`): add `.on` to `.struck`; the pencil line draws for **220ms**. At the same moment, `cutPost()` starts. The card does not move until Buffer confirms the delete.
-2. **Leave** (`leaving`): once the delete resolves and the strike has had its 220ms, add `.is-gone`; the words leave in **160ms** and the blank sheet crumples for **520ms**. A **720ms** timer is the safety net if `animationend` never fires. The current crumple is a clipped, creased sheet that folds inward; it is not a scale-down. Reduced motion uses a 160ms `crumple-fade`.
+2. **Leave** (`leaving`): once the delete resolves and the strike has had its 220ms, add `.is-gone` (the card's words and surface fade over 160ms) and mount the canvas crumple (`src/components/Crumple.tsx`) over the card. The blank sheet folds on a 22×14 mesh for **520ms**, with per-face shading and crease lines, then calls `beginCollapse`. A **720ms** timer is the safety net. Reduced motion skips the crumple and collapses immediately.
 3. **Collapse** (`collapsing`): add `.collapsed` to the wrapping `.slot` (grid row `1fr → 0fr`, **280ms**).
 4. **Advance**: after 280ms, clear timers, increment the cut total, announce "Cut. N left.", reset the visual flags, advance the index, and move focus to the next card's Keep button.
 

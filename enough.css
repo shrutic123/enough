@@ -90,7 +90,9 @@ html[data-input='keyboard'] [role='button']:focus {
 
 /* ---------- Motion 2: Cut. Order: add .on to .struck, wait 220ms,
               add .is-gone to .card, remove the node on animationend ---------- */
-.card.is-gone { animation: dissolve 320ms var(--ease) forwards; }
+/* The blank sheet itself is crumpled by the canvas overlay; the card just fades
+   its words and surface so the paper canvas can take over. */
+.card.is-gone { opacity: 0; transition: opacity 160ms var(--ease); }
 @keyframes dissolve {
   to { opacity: 0; filter: blur(6px); transform: translateY(-6px); }
 }
