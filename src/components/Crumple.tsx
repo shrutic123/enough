@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 
-const DURATION = 520
+const DURATION = 650
 
 type Point = { u: number; v: number }
 
