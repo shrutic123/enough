@@ -1,7 +1,7 @@
 # Enough — Technical Architecture
 
-**Status:** living draft, v0.1, Nov 6 2026.
-**Source of truth:** the code. This document was seeded from the plan and verified Buffer docs; it is reconciled after each session.
+**Status:** living draft, v0.2, Nov 6 2026.
+**Source of truth:** the code. This document is reconciled to commit `73618bb`; update it after each session.
 **Related:** [PRD](PRD.md), [BUILD_LOG](../BUILD_LOG.md), [README](../README.md).
 
 Legend: **[built]** exists in the repo, **[planned]** agreed but not built, **[open]** needs a decision or verification.
@@ -11,53 +11,59 @@ Legend: **[built]** exists in the repo, **[planned]** agreed but not built, **[o
 ## 1. System overview
 
 ```
-Browser (React + Vite)
+Browser (React + Vite)                    [built]
    │  same-origin fetch, no tokens
    ▼
-/api  (one Express app)
-   ├─ /api/auth/*     OAuth 2.0 + PKCE, session cookie
-   ├─ /api/buffer/*   GraphQL proxy, queue reads and mutations
-   └─ /api/ai/*       AI calls, provider key server-side
+/api  (one Express app)                   [built]
+   ├─ /api/auth/*     OAuth 2.0 + PKCE, session cookie   [built]
+   ├─ /api/buffer/*   account, channels, queue reads     [built]
+   └─ /api/ai/*       AI calls, provider key server-side [planned]
    │
-   ├──► Buffer GraphQL  https://api.buffer.com
-   ├──► Buffer OAuth    https://auth.buffer.com/auth, /token
-   └──► AI provider
+   ├──► Buffer GraphQL  https://api.buffer.com           [built]
+   ├──► Buffer OAuth    https://auth.buffer.com/auth, /token  [built]
+   └──► AI provider                                      [planned]
 ```
 
 Two hosting modes, one server codebase:
 
-- **Local:** Vite dev server on `https://localhost:5173`, Express on `http://localhost:3001`, Vite proxies `/api` to Express. One browser origin, so the session cookie and the OAuth callback share a host.
-- **Production:** Vercel serves the Vite build as static files and runs the same Express app as one serverless function at `/api`.
+- **Local [built]:** Vite dev server on `https://localhost:5173`, Express on `http://localhost:3001`, Vite proxies `/api` to Express. One browser origin, so the session cookie and the OAuth callback share a host.
+- **Production [built but unverified]:** Vercel serves the Vite build as static files and runs the same Express app as one serverless function at `/api`. The rewrite has not been exercised on a live deployment.
 
 ## 2. Repository layout
 
 ```text
 enough/
-  api/index.js            Vercel entry point; re-exports server/app.js
+  api/index.js                  Vercel entry: re-exports server/app.js; never listens
   server/
-    app.js                Express routes and error handling
-    index.js              local HTTP listener (Vite proxies to it)
-    config.js             env, redirect URI, scopes, session secret
-    session.js            iron-session wrapper
-    buffer.js             PKCE, token exchange/refresh, GraphQL client, queries
-    ai.js                 provider call + prompt + response validation
+    app.js                      Express app: session middleware, six routes, error handler
+    index.js                    local listener only (Node --watch)
+    config.js                   env loading, redirect URI, host guard, scopes, session secret
+    session.js                  iron-session wrapper
+    buffer.js                   PKCE, token exchange/refresh, GraphQL client, queries
   src/
-    main.tsx              React entry; imports Tailwind then enough.css
-    App.tsx               session load + screen state
-    types.ts              client/server contract
-    lib/api.ts            typed fetch helpers
-    lib/diff.ts           word-level diff (client)
-    pages/                Connect, Queue, Essence, End
-    components/           Card, ActionBar, WordDiff, EnoughMark
-    styles/app.css        Tailwind directives + small app rules
-  enough.css              design tokens and motion (already exists)
-  tailwind.config.js      tokens mapped to CSS vars (already exists)
-  docs/                   PRD, architecture, deploy notes
-  vercel.json             API rewrite; static build
-  .env.example            placeholders only
+    main.tsx                    React entry
+    App.tsx                     session load, dev demo bypass, Connect vs Queue
+    types.ts                    client/server contract
+    lib/api.ts                  typed fetch helpers (session, channels, queue, logout)
+    lib/format.ts               date, subline, counts
+    pages/Connect.tsx           connect screen
+    pages/Queue.tsx             review session and motion state machine
+    pages/End.tsx               end screen
+    pages/Essence.tsx           placeholder only, not imported by App
+    components/QueueCard.tsx    one card, Keep/Cut
+    hooks/useReducedMotion.ts   matchMedia listener
+    fixtures/cards.ts           dev-only demo cards
+    styles/app.css              Tailwind directives + small app rules
+  enough.css                    design tokens and motion (pre-existing)
+  tailwind.config.js            tokens mapped to CSS vars (pre-existing)
+  docs/                         PRD, architecture, deploy notes
+  vercel.json                   build/output + /api rewrite
+  .env.example                  placeholders only
 ```
 
-**Decision:** one Express function at `/api`, not eight separate serverless files. Rationale: the Buffer starter app already has this shape, the OAuth/session code is shared, and there are fewer cold starts. The README maps features to files instead of relying on a one-function-per-endpoint tree.
+There is no `server/ai.js`, no `src/lib/diff.ts`, and no Card/ActionBar/WordDiff/EnoughMark component tree yet.
+
+**Decision:** one Express function at `/api`, not eight separate serverless files. The OAuth/session code is shared, and there are fewer cold starts. The README maps features to files instead of relying on a one-function-per-endpoint tree.
 
 **Decision:** server in plain JavaScript ESM (ported from the Buffer starter, lower risk); client in TypeScript (the UI has real state and motion).
 
@@ -65,76 +71,89 @@ enough/
 
 | Piece | Value |
 |---|---|
+| Node | 22.x (`package.json` engines) |
 | Browser origin | `https://localhost:5173` |
 | Vite dev server | 5173, HTTPS via `@vitejs/plugin-basic-ssl`, `strictPort: true` |
 | Express | `http://localhost:3001` |
 | Vite proxy | `/api` → `http://localhost:3001`, **`changeOrigin: false`** |
 | Redirect URI | `https://localhost:5173/api/auth/callback` |
-| Scripts | `npm run dev` runs Express (`node --watch`) and Vite together |
+| Scripts | `npm run dev` (`concurrently`: `node --watch server/index.js` + `vite`), `npm run typecheck`, `npm run build` |
 
-`changeOrigin: false` matters: the server checks that the request host matches the redirect URI host, so the proxy must preserve `Host: localhost:5173`.
+`changeOrigin: false` matters: the login route compares the request `Host` with the redirect URI host, so the proxy must preserve `Host: localhost:5173`.
 
-Buffer requires HTTPS even on localhost, and compares redirect URIs character for character. The localhost URI must be registered on the app client alongside the production URI.
+Buffer requires HTTPS even on localhost and compares redirect URIs character for character. The localhost URI must be registered on the app client alongside the production URI.
+
+`.env` is read with `process.loadEnvFile()` only when `NODE_ENV !== 'production'`. A deployed host's real environment always wins.
 
 ## 4. Authentication
 
-### Flow
+### Flow **[built, not browser-tested]**
 
 1. `GET /api/auth/login`
-   - Generate a PKCE verifier (32 random bytes, base64url) and a `state`.
-   - Store both in the session; save the session before redirecting.
+   - Check the request `Host` against the redirect URI host. On mismatch or a deployment with no callback, redirect to `/?error=<explanation>` — login never starts from the wrong origin.
+   - Generate a PKCE verifier (32 random bytes, base64url) and a `state` (16 random bytes, base64url).
+   - Store `{ codeVerifier, state }` under `session.pkce`; save the session before redirecting.
    - Redirect to `https://auth.buffer.com/auth` with `client_id`, `redirect_uri`, `response_type=code`, `scope`, `state`, `code_challenge`, `code_challenge_method=S256`, `prompt=consent`.
 2. `GET /api/auth/callback`
    - Read `code`, `state`, `error` from the query.
-   - Clear the one-time PKCE values from the session either way.
-   - If `state` is missing or mismatched, return 403 with a plain explanation.
-   - Exchange the code at `https://auth.buffer.com/token` with `client_secret` and `code_verifier`.
-   - Save `{ accessToken, refreshToken, scope, expiresAt, connectedAt }` in the session; redirect to `/`.
-3. `POST /api/auth/logout`
-   - Destroy the session; return `{ connected: false }`.
+   - Clear `session.pkce` first: the values are one-time either way.
+   - `error` from Buffer → redirect to `/?error=<description or error>`.
+   - No stored `pkce` → 403 plain text ("Session lost…"), because the callback cannot be tied to a login this server started.
+   - `state` mismatch → 403 plain text ("Invalid state parameter…").
+   - Missing `code` → redirect to `/?error=…`.
+   - Exchange the code at `https://auth.buffer.com/token`. The secret goes in the **form body** (`client_secret_post`), never HTTP Basic: `client_id`, `client_secret` (when configured), `grant_type=authorization_code`, `code`, `redirect_uri`, `code_verifier`.
+   - Save `{ accessToken, refreshToken, scope, expiresAt, connectedAt }` in the session; redirect to `/`. If saving the sealed cookie fails (for example, it is too large), the tokens are dropped and the cleared session is saved before rethrowing.
+3. `POST /api/auth/logout` — destroy the session; return `{ connected: false }`. No UI calls this yet.
 
-### Session
+### Session **[built]**
 
 - `iron-session` v9, cookie name `enough_session`.
 - `httpOnly: true`, `secure: true`, `sameSite: 'lax'`, `path: '/'`, 30-day TTL.
-- The cookie is encrypted with `SESSION_SECRET` (32+ chars). In development, if it is missing, generate `.session-key` (gitignored) so restarts do not invalidate a login. In production, fail loudly if it is missing.
-- Tokens never leave the server. The client only sees `{ connected, account, redirectUri }`.
+- The cookie is sealed with `SESSION_SECRET` (32+ characters, trimmed).
+  - Development: if the secret is missing or too short, use `.session-key` in the repo root (created `0600`, gitignored) so restarts do not invalidate a login. If the file cannot be written, fall back to a per-boot key and warn.
+  - Production: throw at module load if the secret is missing or shorter than 32 characters. This is a startup failure, not a graceful JSON error.
+- `BUFFER_CLIENT_ID` is required in every environment (`config.js` throws without it). `BUFFER_CLIENT_SECRET` is optional for a public client.
+- Tokens never leave the server. The server returns `{ connected, account?, redirectUri, scope? }`; `scope` is only present when connected and is not yet used by the client.
 
-### Refresh
+### Refresh and rate limits **[built]**
 
-- Access tokens last about an hour (`expires_in`); store `expiresAt = now + expires_in - 30s`.
-- Refresh tokens are single-use. Every successful refresh returns a replacement; save it before the next request.
-- Reusing an old refresh token revokes the grant. Refresh in exactly one place: the GraphQL access-token helper.
-- On 401 or a failed refresh: clear tokens, return 401, and the UI shows "Your Buffer session expired. Connect again."
+- `expiresAt = now + (expires_in || 3600) * 1000 - 30_000`.
+- One helper, `accessToken(ctx)`, gates every Buffer call. Refresh tokens are single-use: a successful refresh must return a replacement, and the session is saved before the new token is used.
+- On a failed refresh: clear tokens, save, return 401 "Your Buffer session expired. Connect again to continue."
+- On a GraphQL 401: clear tokens, save, return 401 "Buffer rejected the access token — reconnect".
+- On 429: read `Retry-After`; retry once only when the wait is short (≤5 seconds). Otherwise return 429 with the wait. Rate limits are per app client, so all users share the quota.
+
+### Redirect URI **[built config, not registered]**
+
+- Development default: `https://localhost:5173/api/auth/callback`.
+- `REDIRECT_URI` overrides it. Values are trimmed, a non-HTTPS URL warns, and an unparseable value falls back to the default with a warning.
+- On Vercel, the **production** deployment defaults to `https://${VERCEL_PROJECT_PRODUCTION_URL}/api/auth/callback`. Preview deployments get `null`, so login is disabled there unless `REDIRECT_URI` is set for that preview.
+- Non-Vercel production uses `VERCEL_PROJECT_PRODUCTION_URL` if present; otherwise `null` and login is disabled.
+- `loginUnavailableReason()` compares the request host exactly to the callback host. `localhost` and `127.0.0.1` are different hosts.
 
 ### Scopes
 
-Request only scopes enabled on the app client. Current plan:
+| Scope | State | Used for |
+|---|---|---|
+| `account:read` | **requested** | account, organizations |
+| `posts:read` | **requested** | queue read |
+| `offline_access` | **requested** | refresh token |
+| `posts:write` | planned | Cut, edit, create |
+| `ideas:read` | planned | Essence → idea destination |
+| `ideas:write` | planned | create an idea |
 
-| Scope | Used for |
-|---|---|
-| `account:read` | account, organizations, channels |
-| `posts:read` | queue read |
-| `posts:write` | Cut, edit, create |
-| `ideas:read` | Essence → idea destination, if ideas are listed |
-| `ideas:write` | create an idea |
-| `offline_access` | refresh token |
-
-Initial read-only slice: `account:read posts:read offline_access`. Add write scopes when the mutation endpoints ship, then re-consent.
+`SCOPES` is exactly `account:read posts:read offline_access`. Adding write scopes requires enabling them on the app client and re-consenting.
 
 ## 5. Buffer GraphQL layer
 
 - Endpoint: `https://api.buffer.com` (POST, JSON `{query, variables}`).
 - Header: `Authorization: Bearer <access token>`.
-- A GraphQL failure is usually HTTP 200 with an `errors` array; treat it as a failure and surface `extensions.code` plus `message`.
-- A typed mutation failure is data, not an exception: `... on MutationError { message }` catches every error type.
-- Rate limits: read `RateLimit` / `RateLimit-Policy`; on 429 read `Retry-After`. Retry once only if the wait is short (≤5s); otherwise surface the wait.
-- Cache organization and channel data for the session; do not refetch on every screen.
-- Never trust IDs, service names or post text from the browser. Re-fetch the queue/channel and validate before mutating.
+- A GraphQL failure is usually HTTP 200 with an `errors` array; it becomes a 502 with `extensions.code` plus `message` appended only in development.
+- A typed mutation failure would be data, not an exception (`... on MutationError { message }`). No mutation is wired yet.
+- Channels are fetched on every queue request; there is **no cross-request cache**.
+- `organizationId` comes from the client query string. The server does not independently verify organization membership; the id is passed to Buffer and the result is whatever that token can read. Mutations must re-validate post ids against a freshly fetched queue when they are built.
 
-### Verified operations
-
-**Account**
+### Account **[built]**
 
 ```graphql
 query Account {
@@ -147,7 +166,7 @@ query Account {
 }
 ```
 
-**Channels**
+### Channels **[built]**
 
 ```graphql
 query Channels($organizationId: OrganizationId!) {
@@ -163,9 +182,9 @@ query Channels($organizationId: OrganizationId!) {
 }
 ```
 
-`channels` returns a list (not a cursor connection). Filter out `isDisconnected` for destinations.
+`channels` returns a list (not a cursor connection). The endpoint returns disconnected channels too, with the flag, so the UI can explain missing accounts; there is no channel picker yet.
 
-**Queue**
+### Queue **[built]**
 
 ```graphql
 query Queue($organizationId: OrganizationId!, $first: Int!, $after: String) {
@@ -175,7 +194,6 @@ query Queue($organizationId: OrganizationId!, $first: Int!, $after: String) {
     input: {
       organizationId: $organizationId
       filter: { status: [scheduled, draft, error, needs_approval] }
-      sort: [{ field: dueAt, direction: asc }]
     }
   ) {
     edges {
@@ -194,11 +212,14 @@ query Queue($organizationId: OrganizationId!, $first: Int!, $after: String) {
 }
 ```
 
-- Page size and `SortDirection` values: **[open]** confirm in the explorer before shipping. The query shape above is from the reference; the sort enum spelling is the one unverified part.
-- Normalize each node into a `QueueCard` and join the channel name/service from the cached channel list.
-- Posts with an empty `text` (media-only) are skipped in v1.
+- **No `sort` argument.** The `SortDirection` spelling is unverified, so `normalizeQueue()` sorts by `dueAt` in JavaScript: ascending, with missing/unparseable dates last.
+- `first` comes from `?first=`, default 50, clamped to 1..50. The client does not send it, so the server fetches 50. `after` is declared but never sent: only the first page is read.
+- Each post is joined server-side to the channel list: `channelName = displayName || name || ''`, plus `service`.
+- Posts with missing or blank `text` (media-only) are skipped.
+- Status is lowercased into the `PostStatus` union.
+- The client sorts again by `dueAt` (nulls last) and caps the review at 20 cards.
 
-**Cut**
+### Cut **[planned]**
 
 ```graphql
 mutation DeletePost($input: DeletePostInput!) {
@@ -209,9 +230,9 @@ mutation DeletePost($input: DeletePostInput!) {
 }
 ```
 
-`DeletePostInput` is `{ id: PostId! }`. `deletePost` returns `DeletePostSuccess | VoidMutationError`. Only allow ids that were in the fetched queue; do not accept arbitrary ids from the browser.
+`DeletePostInput` is `{ id: PostId! }`. Only allow ids that were in the fetched queue; do not accept arbitrary ids from the browser. The client currently cuts locally and never calls this.
 
-**Create**
+### Create **[planned]**
 
 ```graphql
 mutation CreatePost($input: CreatePostInput!) {
@@ -229,7 +250,7 @@ mutation CreatePost($input: CreatePostInput!) {
 - Per-network metadata is required for some services (Instagram `{type:"post", shouldShareToFeed:true}`, Facebook `{type:"post"}`, Google Business `{type:"whats_new"}`). Reuse the starter's `buildPostInput` mapping. YouTube needs a title.
 - `mode`: `addToQueue` for the default; `customScheduled` + `dueAt` if a time is chosen.
 
-**Idea**
+### Idea **[planned]**
 
 ```graphql
 mutation CreateIdea($input: CreateIdeaInput!) {
@@ -240,32 +261,36 @@ mutation CreateIdea($input: CreateIdeaInput!) {
 }
 ```
 
-`CreateIdeaInput`: `{ organizationId, content: { title, text } }`. **There is no update or delete idea mutation.** Ideas can only be created and read.
+`CreateIdeaInput`: `{ organizationId, content: { title, text } }`. There is no update or delete idea mutation; ideas are create-only.
 
-**Merge (planned, stretch)**
+### Merge **[planned, stretch]**
 
 `editPost(input: { id, text })` → then `deletePost`. Only same-channel near-duplicates. If the edit succeeds and the delete fails, the user sees "The text was combined, but the duplicate wasn't deleted. Try again." Do not roll back by editing again.
 
 ## 6. Internal API surface
 
-All responses are JSON. Errors use `{ "error": "sentence-case message" }` with the matching HTTP status.
+All JSON responses use `{ "error": "sentence-case message" }` with the matching HTTP status, except the browser-facing auth routes, which redirect or return plain text on a bad callback.
 
-| Method | Path | Body / query | Response |
-|---|---|---|---|
-| GET | `/api/auth/login` | — | 302 to Buffer |
-| GET | `/api/auth/callback` | `code`, `state` | 302 to `/` or a plain error |
-| POST | `/api/auth/logout` | — | `{ connected: false }` |
-| GET | `/api/buffer/session` | — | `{ connected, account?, redirectUri }` |
-| GET | `/api/buffer/channels` | `organizationId` | `{ channels }` |
-| GET | `/api/buffer/queue` | `organizationId`, `first?` | `{ posts: QueueCard[] }` |
-| POST | `/api/buffer/cut` | `{ postId }` | `{ ok: true }` **[planned]** |
-| POST | `/api/buffer/create` | `{ kind, text, channelId?, mode?, dueAt?, title? }` | `{ post? , idea? }` **[planned]** |
-| POST | `/api/ai/essence` | `{ text }` | `{ trimmed }` **[planned]** |
-| POST | `/api/ai/audit` | `{ posts: [{id,text,channel,dueAt,status}] }` | `{ duplicates, stale, overPosting }` **[planned]** |
+| Method | Path | Body / query | Response | Status |
+|---|---|---|---|---|
+| GET | `/api/auth/login` | — | 302 to Buffer, or 302 to `/?error=` | **built** |
+| GET | `/api/auth/callback` | `code`, `state`, `error?` | 302 to `/` or `/?error=`; 403 on a bad callback | **built** |
+| POST | `/api/auth/logout` | — | `{ connected: false }` | **built** |
+| GET | `/api/buffer/session` | — | `{ connected, account?, redirectUri, scope? }` | **built** |
+| GET | `/api/buffer/channels` | `organizationId` (required) | `{ channels }` | **built** |
+| GET | `/api/buffer/queue` | `organizationId` (required), `first?` | `{ posts: QueueCard[] }` | **built** |
+| POST | `/api/buffer/cut` | `{ postId }` | `{ ok: true }` | planned |
+| POST | `/api/buffer/create` | `{ kind, text, channelId?, mode?, dueAt?, title? }` | `{ post?, idea? }` | planned |
+| POST | `/api/ai/essence` | `{ text }` | `{ trimmed }` | planned |
+| POST | `/api/ai/audit` | `{ posts: [{id,text,channel,dueAt,status}] }` | `{ duplicates, stale, overPosting }` | planned |
 
-Client contract lives in `src/types.ts`:
+`/api/buffer/session` returns `connected: false` (not an error) when there are no tokens or Buffer rejects them; this is the reconnect path.
+
+Client contract in `src/types.ts`:
 
 ```ts
+type PostStatus = 'draft' | 'error' | 'needs_approval' | 'scheduled' | 'sending' | 'sent'
+
 type QueueCard = {
   id: string
   text: string
@@ -273,7 +298,7 @@ type QueueCard = {
   channelName: string
   service: string
   dueAt: string | null
-  status: 'draft' | 'error' | 'needs_approval' | 'scheduled' | 'sending' | 'sent'
+  status: PostStatus
 }
 ```
 
@@ -281,20 +306,24 @@ type QueueCard = {
 
 ## 7. Client architecture
 
-- No router. `App.tsx` loads the session once, then renders `Connect` or `Queue`; `Queue` owns the review session and can hand off to `Essence` / `End`.
-- Server state is fetched, not duplicated in a store. A small `useQueue` hook holds the current card, the remaining list and the counts.
-- Mutations are explicit and optimistic only where it is safe: Cut removes the card locally **after** the server confirms, never before.
-- The queue is a snapshot taken on load. After a Cut, the local list is the source of truth for the session; a refresh re-reads Buffer.
-- Errors are rendered in place, not as alerts. A failed action keeps the card and its text intact.
-- `demo=1` (development only) loads fixture cards so the motion and layout can be built without a Buffer session. It must never ship as a fake success path in production.
+- No router **[built]**. `App.tsx` loads the session once, then renders `Connect` or `Queue`. `Queue` owns the review and renders `End` when the cards run out. `Essence` is a placeholder and is not imported.
+- `Queue.tsx` holds the whole review session in local state: load status, the capped card list, index, done, kept/cut totals, the motion phase and visual flags, and the live-region message. There is no store and no `useQueue` hook.
+- The first organization on the account is selected automatically (`session.account.organizations[0]`). There is no organization or channel picker UI; `getChannels()` exists in `lib/api.ts` but is unused.
+- Read state is fetched, not duplicated. The queue is a snapshot taken on load; a refresh re-reads Buffer.
+- No mutation is wired. Keep makes no API call; Cut only changes local state, so a refresh brings the cut post back.
+- Errors render in place with a Try again action, not as alerts. A failed queue load also offers Reconnect.
+- `?demo=1` is a development-only fixture path. In `App.tsx`, `import.meta.env.DEV && ?demo=1` skips the session fetch and renders `QueuePage` with a fake session; `Queue.tsx` then loads `src/fixtures/cards.ts` instead of calling the API. `import.meta.env.DEV` is false in production builds, so the path cannot ship as a fake success.
+- Reduced motion is read with `useReducedMotion()` (a `matchMedia` listener), not only by CSS.
 
-## 8. AI layer
+## 8. AI layer **[planned]**
+
+No AI code exists yet: there is no `server/ai.js`, no AI endpoint, and no provider key. The design below is the agreed shape for when it is built.
 
 ### Essence
 
 - Server builds a strict prompt: "Return only the trimmed text. Keep one idea. Do not add facts, links, hashtags, emoji or calls to action. Preserve voice, @mentions and URLs. Do not explain."
 - Send `{ text }` only. Cap input (e.g. 4,000 characters) and output.
-- Validate: non-empty, no longer than the input, and not an obvious refusal. If it fails, return 502 with "The trim didn't come back. Your draft is unchanged."
+- Validate: non-empty, no longer than the input, not an obvious refusal. On failure, return 502 with "The trim didn't come back. Your draft is unchanged."
 - The **client** computes the word-level diff between original and trimmed text. This guarantees the pencil marks correspond to real deletions. No index-based model output.
 
 ### Audit
@@ -310,86 +339,114 @@ type QueueCard = {
 
 ### Provider
 
-**[open]** The AI provider is not chosen yet. Keep `server/ai.js` behind a small `complete(prompt)` function so the provider is one file. The key is server-side, never `VITE_`-prefixed.
+**[open]** The AI provider is not chosen. Keep a small `complete(prompt)` seam so the provider is one file. The key is server-side, never `VITE_`-prefixed.
 
 ## 9. Motion implementation
 
-### Cut
+### Cut **[built, local only]**
 
-1. Add `.on` to the `.struck` span inside the card (the pencil line draws, 220ms).
-2. Wait 220ms.
-3. Add `.is-gone` to the card (dissolve 320ms).
-4. On `animationend`: add `.collapsed` to the wrapping `.slot` (grid row `1fr → 0fr`, 280ms).
-5. On `transitionend`: remove the card node, reset the slot, move focus to the next card's Keep button, announce the new count in a polite live region.
+`Queue.tsx` runs a four-phase machine: `idle → striking → leaving → collapsing → idle`.
 
-Reduced motion: skip 1–2; fade the card (120ms), collapse instantly, keep focus and the announcement.
+1. **Strike** (`striking`): add `.on` to `.struck`; the pencil line draws for **220ms**.
+2. **Leave** (`leaving`): after 220ms, add `.is-gone` to the card; the dissolve runs **320ms**. A `400ms` timer is a safety net if `animationend` never fires. `animationend` on the card itself also calls the collapse step.
+3. **Collapse** (`collapsing`): add `.collapsed` to the wrapping `.slot` (grid row `1fr → 0fr`, **280ms**).
+4. **Advance**: after 280ms, clear timers, increment the cut total, announce "Cut. N left.", reset the visual flags, advance the index, and move focus to the next card's Keep button.
 
-### Keep
+Reduced motion: strike wait 0ms, dissolve fallback 160ms (CSS animations run at 120ms), collapse wait 0ms. Focus and the announcement still happen.
 
-Add `.is-kept` (180ms slide right), then collapse the slot as above. Focus moves to the next card.
+### Keep **[built]**
 
-### Essence
+`idle → leaving` directly: add `.is-kept` (slide right, **180ms**), then collapse the slot (**280ms**), then advance. Reduced motion waits 120ms for the fade, then collapses immediately. Keep makes no API call and counts toward "kept".
+
+### Guards and accessibility **[built]**
+
+- `phaseRef` and `indexRef` reject a second decision while a phase is running; repeated keydowns are ignored.
+- `K` / `C` are ignored when the event has modifiers, repeats, comes from an input/textarea/select/contentEditable, or the screen is loading/done.
+- Each card is an `<article>` with real `<button>` actions; the `K`/`C` hints are `<kbd aria-hidden="true">`.
+- The Keep button is ref-forwarded; after advance, an effect focuses the next card's Keep button.
+- A visually hidden `aria-live="polite"` region announces "Kept. N left." or "Cut. N left."
+- The card carries `aria-busy` while a phase runs.
+- `useReducedMotion()` feeds the JS timers; `enough.css` also reduces all animations to 120ms and transitions to 1ms.
+
+### Essence **[planned]**
 
 - Render each word as `<span class="word" style={{'--i': n}}>`.
 - Removed words get `.cut` (pencil line drawn) and then `.gone`; the CSS delays the collapse by `220ms + i*25ms`.
-- The visible word count is derived from the trimmed text, not a separate counter; animate it with a short `requestAnimationFrame` loop or a CSS transition on a numeric value. Simpler: update the count at the end of the stagger. **[open]** choose the simpler version if time is tight.
-- `.word` must not clip long words at rest; apply `max-width` only during the collapse.
+- The visible word count is derived from the trimmed text, not a separate counter; update it at the end of the stagger unless there is time for a tween. **[open]**
+- The `.word` CSS exists and is unused until the editor ships.
 
-### End
+### End **[built]**
 
-`.enough` uses the existing `settle` animation (900ms, letter-spacing tightens). The reduced-motion rule needs a dedicated fade-in keyframe instead of `animation-direction: reverse` (the current CSS is fragile).
+`.enough` uses the existing `settle` animation (`900ms`, letter-spacing tightens). The reduced-motion rule uses a dedicated `fade-in-only` keyframe. The heading receives focus on mount (`tabIndex={-1}`). Actions are "Back to Buffer" and "Start over" (a page reload), not "Review again".
 
-### Known CSS fixes
+### CSS fixes (resolved)
 
-- `.word.cut` currently shows the line instantly; add a `background-size` transition like `.struck`.
-- `.word` has `max-width: 24ch` at rest, which can clip long words.
-- The reduced-motion `.enough` override should be rewritten as a clean fade-in.
+- `.word.cut` now has a `background-size` transition like `.struck`; the line draws rather than appearing instantly.
+- `.word` uses `max-width: 100%`, so long words are not clipped at rest.
+- The reduced-motion `.enough` override is a clean `fade-in-only` fade, not `animation-direction: reverse`; letter-spacing is held constant so tracking does not animate.
 
 ## 10. Security
 
-- OAuth `state` is one-time and verified; the PKCE verifier never leaves the server.
-- Session cookie is encrypted and HttpOnly; no tokens in client JS, `localStorage` or `sessionStorage`.
-- `Cache-Control: no-store, private` on `/api/*` and auth routes.
-- The browser never sends a Buffer token, organization id it chose, or arbitrary post id without server validation.
-- CSRF: the OAuth callback is a top-level GET protected by `state`. Mutating JSON endpoints require same-origin `Content-Type: application/json` and the session cookie; `SameSite=Lax` blocks cross-site form posts. **[open]** add an explicit origin check on mutations if time permits.
-- Rate limits are per app client and shared by all users; cache and back off.
-- `.env` is gitignored; `.env.example` contains placeholders only. Never log tokens or full auth headers.
+- OAuth `state` is one-time and verified; the PKCE verifier never leaves the server. **[built]**
+- Session cookie is encrypted and HttpOnly; no tokens in client JS, `localStorage` or `sessionStorage`. **[built]**
+- `Cache-Control: no-store, private` is set on every `/api` route. **[built]**
+- The browser never sends a Buffer token. It does send `organizationId`, which the server passes through without independently checking membership. Mutations must validate ids server-side when built. **[built read path / planned mutation path]**
+- CSRF: the OAuth callback is a top-level GET protected by `state`. `SameSite=Lax` blocks cross-site form posts. There is no explicit Origin check on future mutations. **[open]**
+- Rate limits are per app client and shared by all users; the client backs off once for a short wait. **[built]**
+- `.env` is gitignored; `.env.example` contains placeholders only. Tokens and full auth headers are never logged. **[built]**
+- In production, a missing or short `SESSION_SECRET` fails startup loudly rather than silently generating per-instance keys. **[built]**
 
 ## 11. Observability and debugging
 
-- Structured JSON logs for OAuth exchange failures, refresh failures, Buffer API errors and AI failures. Log the event, status and code — never the token or post text.
-- `/api/buffer/session` echoes `redirectUri` to debug character-level mismatches.
-- Buffer's explorer (`developers.buffer.com/explorer.html`) is the reference for field names; do not guess.
-- The sample app (`bufferapp/buffer-sample-apps`, `samples/app-client-starter-app`) is the reference for OAuth, refresh, 429 handling and `createPost` required fields.
+- Structured JSON logs exist for `oauth_token_exchange_failed`, `buffer_token_refresh_failed`, `buffer_api_error`, and `unhandled_request_error`. They log event, status/code and message — never the token or auth header. **[built]**
+- `/api/buffer/session` echoes `redirectUri` to debug character-level mismatches. **[built]**
+- Development error messages append the underlying cause via `withCause()`; production keeps the cause out of the response. **[built]**
+- Buffer's explorer (`developers.buffer.com/explorer.html`) is the reference for field names; do not guess. The sample app (`bufferapp/buffer-sample-apps`, `samples/app-client-starter-app`) is the reference for OAuth, refresh, 429 handling and `createPost` required fields.
+- AI failures are not logged yet because the AI layer is not built.
 
 ## 12. Verification
 
-No automated test suite in v1. The smoke tests are:
+No automated test suite in v1.
 
-1. `npm run typecheck` and `npm run build` pass.
-2. Local: connect → consent → back → channels listed.
-3. Queue returns real scheduled posts; refresh matches Buffer.
-4. Cut a post → it disappears from Buffer.
-5. Keep a post → Buffer is unchanged.
-6. Essence: trim → marks match the diff → send → item appears in Buffer.
-7. Sign out → session cookie gone → reconnect works.
-8. Reduced motion: no transforms, no stagger, state still updates.
-9. Production: repeat 2–7 on the deployed HTTPS URL with the production redirect URI.
+Build checks:
+
+1. `npm run typecheck` (`tsc -b`).
+2. `npm run build` (`tsc -b && vite build`).
+
+Manual checks, with what is possible today:
+
+1. Local connect → consent → back → queue loads. **[blocked until the localhost redirect URI is registered and `account:read` / `posts:read` are enabled]**
+2. Queue returns real posts, sorted by `dueAt`, at most 20 cards. **[needs a session]**
+3. Keep makes no API call and advances. **[built]**
+4. Cut animates and removes the card locally; a refresh restores it. **[built; deletePost is not wired]**
+5. End screen shows "Enough." with kept/cut totals and receives focus. **[built]**
+6. `?demo=1` in `npm run dev` shows the fixture cards with no session. **[built]**
+7. Reduced motion: no strike wait or slide, state still updates. **[built]**
+8. Sign out: the endpoint clears the cookie, but no UI button calls it. **[API only]**
+9. Production: connect, read the queue, sign out, reconnect. **[not run; not deployed]**
 
 ## 13. Known limitations
 
+- **Cut is local only.** No `deletePost` call; a reload restores cut posts. The PRD's destructive-cut behaviour is not implemented.
+- **No AI.** No Essence, no queue audit, no duplicate or over-posting reasons. Only two deterministic reasons exist, both client-side: `error` status and a `dueAt` in the past.
+- **No Merge**, as agreed for v1.
+- **No Essence editor.** `pages/Essence.tsx` is a placeholder, not routed.
+- **No organization or channel picker.** The first organization is selected automatically; the channels endpoint is unused by the UI.
+- **No sign-out in the UI**, although `/api/auth/logout` works.
 - Ideas are create-only; they cannot appear in Keep/Cut.
-- Merge is deferred; two calls with a partial-failure state.
 - Cookie sessions cannot coordinate concurrent refreshes across tabs. Acceptable for v1; documented.
-- Queue is a load-time snapshot; another device's changes appear on refresh.
-- No undo for Cut; deleting is permanent. The UI says so.
+- Queue is a load-time snapshot and only the first page (up to 50, reviewed as 20). Another device's changes appear on refresh.
+- No undo for Cut once it is wired; deleting is permanent.
 - Media-only posts are skipped.
-- Single organization assumed for the first release; the account's first organization is selected. Multi-org switcher is out of scope.
-- Vercel's function rewrite path semantics must be confirmed on the first deploy.
+- Vercel's function rewrite path semantics are unconfirmed on a live deployment.
+- The localhost and production redirect URIs are not registered yet, so no browser OAuth round trip has been completed.
+- Production domain is unknown.
 
 ## 14. Deployment runbook
 
-1. Create a Vercel project from the GitHub repo. Framework preset: Vite. Build `npm run build`; output `dist`.
+Prepared in `docs/DEPLOY.md`; **not executed**.
+
+1. Create a Vercel project from the GitHub repo. Framework preset: Vite. Build `npm run build`; output `dist` (also set in `vercel.json`).
 2. Set environment variables in Vercel:
    - `BUFFER_CLIENT_ID`
    - `BUFFER_CLIENT_SECRET`
@@ -398,7 +455,7 @@ No automated test suite in v1. The smoke tests are:
    - `AI_API_KEY` (when the provider is chosen)
 3. Register the production redirect URI on the Buffer app client, character for character. Keep the localhost URI registered too.
 4. Deploy. Confirm `vercel.json` routes `/api/*` to the function and static files are served.
-5. Smoke test on production: connect, load queue, cut a test post, create a draft, sign out, reconnect.
+5. Smoke test on production: connect, load the queue, keep/cut through the cards, call `POST /api/auth/logout` (there is no UI button yet), reconnect. Cut does not delete yet, so do not use a real queue to prove deletion.
 6. Do not use a preview deployment for OAuth unless its redirect URI is registered and `REDIRECT_URI` is set for it; cookies cannot cross hosts.
 
 ## 15. Decision log
@@ -413,12 +470,20 @@ No automated test suite in v1. The smoke tests are:
 | D6 | Cut deletes immediately, no undo | Honest and simple; label it and demo on a test account. |
 | D7 | Ideas are create-only | Buffer has no update/delete idea mutation. |
 | D8 | Deterministic audit fallback | The app still works if AI fails; demo stays reliable. |
+| D9 | Sort the queue in JavaScript | The `SortDirection` enum spelling is unverified; sorting normalized posts is safe and testable. |
+| D10 | Fixtures behind `DEV && ?demo=1` | Design and motion can be built without a Buffer session; production builds drop the path. |
+| D11 | Select the first organization automatically | One organization keeps v1 small; a picker is deferred. |
+| D12 | Request only read scopes now | The read path ships first; write scopes wait for mutations and a re-consent. |
+| D13 | Derive card reasons on the client | Status and due date are already in the queue payload; no server reason field yet. |
+| D14 | Fetch queue then channels sequentially | Both calls share one session; parallel refreshes could rotate the refresh token twice. |
 
 ## 16. Open technical questions
 
 1. AI provider and model (one `complete()` seam).
-2. `SortDirection` enum spelling and max page size for `posts`.
-3. Does `deletePost` succeed for `error` status posts?
-4. Vercel rewrite: confirm `/api/(.*)` → `/api` preserves the Express path.
-5. Production domain and the exact registered redirect URIs.
-6. Whether to add an explicit Origin check on mutations.
+2. Does `deletePost` succeed for `error` status posts?
+3. Vercel rewrite: confirm `/api/(.*)` → `/api` preserves the Express path.
+4. Production domain and the exact registered redirect URIs.
+5. Whether to add an explicit Origin check on mutations.
+6. Review set: keep reviewing **all** posts (current code) or restore flagged-only from the PRD? This needs a product decision before the audit is built.
+7. Pagination: is the first 50 enough, or should the client follow `pageInfo` before capping at 20?
+8. Where should sign-out live now that `/api/auth/logout` exists but nothing calls it?

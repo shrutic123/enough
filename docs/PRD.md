@@ -1,6 +1,6 @@
 # Enough — Product Requirements
 
-**Status:** draft v0.1, Nov 6 2026
+**Status:** draft v0.2, Nov 6 2026
 **Contest:** Buffer Commit 2026 (Oct 28 – Nov 13, 2026)
 **Working name:** Enough
 **Owner:** Shruti
@@ -37,6 +37,8 @@ An editor's desk. The only accent is a proofreader's blue pencil, and it is used
 - The reward is the end state: **"Enough."**
 
 The product is deliberately small. It does two things well rather than becoming a Buffer client.
+
+**What changed in this slice (Nov 6):** the first release is **Keep/Cut only**. It reads the real queue, shows one card at a time, and runs Keep/Cut in the browser. Cut does not delete in Buffer yet. Merge remains a stretch goal. Ideas are create-only and are not part of this release.
 
 ## 4. Goals and non-goals
 
@@ -76,6 +78,8 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 ### 6.1 Connect
 
+**Build status:** server-side OAuth and session built; not yet browser-tested.
+
 **Flow**
 
 1. First screen explains the tool in two sentences and offers one action: **Connect Buffer**.
@@ -85,7 +89,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 **Scopes**
 
-`account:read`, `posts:read`, `posts:write`, `ideas:read`, `ideas:write`, `offline_access`. Request only the scopes enabled on the app client; the initial read-only slice needs `account:read posts:read offline_access`.
+`account:read`, `posts:read`, `posts:write`, `ideas:read`, `ideas:write`, `offline_access`. Request only the scopes enabled on the app client. **Current build requests exactly `account:read posts:read offline_access`**; write scopes are added when Cut/Create ship, which requires a re-consent.
 
 **Acceptance**
 
@@ -95,6 +99,8 @@ Verified against developers.buffer.com on Nov 6 2026.
 - No access token or refresh token is ever readable by page JavaScript.
 
 ### 6.2 Queue declutter
+
+**Build status:** queue read and the Keep/Cut card are built; Cut is local only.
 
 **Input:** scheduled posts and drafts from the selected organization.
 
@@ -137,6 +143,8 @@ When the review set is empty, show **"Enough."** in Instrument Serif italic. Sub
 
 ### 6.3 Essence editor
 
+**Build status:** not started. `src/pages/Essence.tsx` is a placeholder page only.
+
 **Flow**
 
 1. Paste a draft, or arrive with text from a queue card ("Trim this instead").
@@ -165,12 +173,16 @@ When the review set is empty, show **"Enough."** in Instrument Serif italic. Sub
 
 ### 6.4 End screen
 
+**Build status:** built.
+
 - **"Enough."** fades in while its letter-spacing tightens. This is the only unprompted motion in the app.
 - Subline with the session totals.
 - Links back to Buffer and, when relevant, back to the remaining queue.
 - Reduced motion: fade only, no tracking change.
 
 ## 7. AI behaviour
+
+**Build status:** not started. No AI provider is wired.
 
 ### Queue audit
 
@@ -249,8 +261,8 @@ For the build:
 
 | Date | Outcome |
 |---|---|
-| Nov 6 | Repo scaffold, OAuth, channels, queue read path |
-| Nov 7–8 | Card UI, Keep/Cut, cut motion, end screen |
+| Nov 6 | Scaffold, OAuth/session/queue API, queue card + Keep/Cut motion, end screen, deploy config (OAuth not browser-tested) |
+| Nov 7–8 | Wire Cut to `deletePost`, complete the browser OAuth round trip, keep/cut polish |
 | Nov 9 | Essence editor, diff, send to Buffer; hard decision point on auth if blocked |
 | Nov 10 | Queue audit, reasons, deterministic fallback, deploy |
 | Nov 11 | README, demo script, screenshot/GIF |
@@ -270,24 +282,38 @@ For the build:
 
 ## 14. Build status
 
-Update at the end of each session.
+Update at the end of each session. **Last updated: Nov 6, 2026.**
 
 | Area | Status |
 |---|---|
 | Repo + design tokens | Done before the window work (Nov 5) |
-| Client scaffold | In progress |
-| OAuth + session | Not started |
-| Channels + queue read | Not started |
-| Card + Keep/Cut | Not started |
-| Essence editor | Not started |
+| Client scaffold | Done — Vite + React + TypeScript + Tailwind 3, local HTTPS on 5173 |
+| OAuth + session | Built server-side; not browser-tested (redirect URI not yet registered) |
+| Channels + queue read | Built server-side; the queue screen fetches the real queue |
+| Card + Keep/Cut | Built — card, strike/dissolve/collapse, keyboard, focus, live region, end screen; Cut is local only |
+| Essence editor | Not started (placeholder page only) |
 | Queue audit | Not started |
-| Deploy | Not started |
+| Deploy | Config prepared (`vercel.json`, `docs/DEPLOY.md`); not deployed or smoke-tested |
 | README + video + submission | Not started |
+
+### Discrepancies between code and PRD
+
+These are real disagreements to settle, not silent edits to the product intent.
+
+| # | PRD says | Code today | Needs a decision |
+|---|---|---|---|
+| 1 | Review only flagged items; go straight to the end screen if nothing is flagged. | Reviews every post, up to 20, in due-date order. No audit. | Keep all-posts review for v1 and rewrite this section, or build the audit first. |
+| 2 | Reasons include near-duplicates and over-posting. | Only `error` status ("This one didn't send.") and a past due date ("This was meant to go out already."). | These two are deterministic; the rest need the audit. |
+| 3 | Cut calls `deletePost`; a refresh in Buffer confirms it is gone. | Cut runs the motion and removes the card locally. A reload restores it. | Wire Cut, enable `posts:write`, re-consent. |
+| 4 | Input is scheduled posts and drafts. | Requests `scheduled`, `draft`, `error`, `needs_approval`. | Confirm the wider filter is intended; the PRD already treats `error` as stale. |
+| 5 | The queue is for the selected organization; if there are no channels, show a calm empty state. | The first organization is selected automatically. No organization or channel picker UI, the channels endpoint is not called by the UI, and a channel-less account falls through to the generic empty-queue message. | Confirm single-organization v1; decide whether a zero-channel empty state is needed. |
+| 6 | Scopes include `posts:write` and `ideas:*`. | Requests `account:read posts:read offline_access`. | Enable and request write scopes when mutations ship. |
+| 7 | End screen offers "Review again" when unflagged posts remain; sign out clears the session. | End offers "Back to Buffer" and "Start over" (a reload). No sign-out button, though `/api/auth/logout` exists. | Decide whether "Review again" and sign-out are in v1. |
 
 ## 15. Open questions
 
 1. **Merge:** leave it out of v1 and add only if session 4 has room?
 2. **AI provider:** which key does the builder already have? (Gemini keeps them on GCP; OpenAI or Anthropic are fine.)
 3. **Default send mode:** `addToQueue` or a custom time? Current lean: add to queue, with a date shown before sending.
-4. **Unflagged posts:** show a "review the rest" option, or only flagged items? Current lean: flagged only, then "Enough."
+4. **Review set:** the current code reviews every post; the PRD leans flagged-only. Decide before the audit ships: review all, or flagged-only then "Enough."
 5. **Undo:** none in v1. Confirm that deleting is acceptable, given the demo uses a test account.
