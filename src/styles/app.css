@@ -67,9 +67,11 @@ a.act {
   position: relative;
   margin: 28px 0 0;
   padding: 36px 40px;
+  min-height: 240px;
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: var(--radius);
+  box-sizing: border-box;
 }
 
 .essay-sheet .essay-input {
