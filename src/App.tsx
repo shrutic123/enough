@@ -4,11 +4,22 @@ import type { SessionResponse } from './types'
 import ConnectPage from './pages/Connect'
 import QueuePage from './pages/Queue'
 
+const DEMO_SESSION: SessionResponse = {
+  connected: true,
+  account: {
+    id: 'demo',
+    email: 'demo@enough.local',
+    organizations: [{ id: 'demo', name: 'Demo' }],
+  },
+}
+
 export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const isDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === '1'
 
   useEffect(() => {
+    if (isDemo) return
     let active = true
 
     getSession()
@@ -27,7 +38,10 @@ export default function App() {
     return () => {
       active = false
     }
-  }, [])
+  }, [isDemo])
+
+  // Dev-only fixture mode. `import.meta.env.DEV` is false in production builds.
+  if (isDemo) return <QueuePage session={DEMO_SESSION} />
 
   if (error) {
     return (

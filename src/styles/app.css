@@ -37,3 +37,29 @@ a.act {
   color: var(--ink);
   text-decoration: none;
 }
+
+/* Long URLs and unbroken strings in a post wrap instead of overflowing. */
+.card-text {
+  overflow-wrap: anywhere;
+}
+
+/* Queue review. The reason line is graphite, one step below the subline. */
+.card-why {
+  margin: 12px 0 0;
+  max-width: 52ch;
+  color: var(--graphite);
+  font-size: 0.9rem;
+}
+
+/* Polite announcements, kept out of the visual layout. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
