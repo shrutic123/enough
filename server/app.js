@@ -4,15 +4,18 @@ import { readSession } from './session.js'
 import {
   ACCOUNT_QUERY,
   CHANNELS_QUERY,
+  CREATE_POST_MUTATION,
   DELETE_POST_MUTATION,
   QUEUE_QUERY,
   buildAuthorizeUrl,
+  buildPostInput,
   createPkcePair,
   createState,
   exchangeCodeForTokens,
   graphql,
   normalizeQueue,
 } from './buffer.js'
+import { aiProviderName, hasAiProvider, trimToEssence } from './ai.js'
 
 const app = express()
 app.use(express.json())
@@ -55,6 +58,41 @@ function requireSameOrigin(req) {
   if (!expected || origin !== expected) {
     throw new HttpError(403, 'That request came from another site. Reload Enough and try again.')
   }
+}
+
+// Reading and writing Buffer data needs a connected session. Login itself is
+// the only flow that runs without one.
+function requireSession(req) {
+  if (!req.session.tokens) throw new HttpError(401, 'Not connected to Buffer')
+}
+
+// Model output is untrusted text. Strip one markdown fence and one pair of
+// wrapping quotes, then reject an empty text, a longer text, or a refusal.
+// Anything accepted is no longer than the draft it came from.
+function sanitizeTrimmed(value, original) {
+  const failure = (message) => {
+    const error = new Error(message)
+    error.status = 502
+    return error
+  }
+
+  if (typeof value !== 'string') throw failure('The provider returned no text')
+
+  let trimmed = value.trim()
+
+  const fence = trimmed.match(/^```[^\n]*\r?\n?([\s\S]*?)\r?\n?```$/)
+  if (fence) trimmed = fence[1].trim()
+
+  const quotePairs = { '"': '"', "'": "'", '“': '”', '‘': '’' }
+  if (trimmed.length >= 2 && quotePairs[trimmed[0]] === trimmed[trimmed.length - 1]) {
+    trimmed = trimmed.slice(1, -1).trim()
+  }
+
+  if (!trimmed) throw failure('The provider returned no text')
+  if (trimmed.length > original.length) throw failure('The provider returned a longer text')
+  if (/^(i can't|i cannot|sorry)/i.test(trimmed)) throw failure('The provider declined to trim the text')
+
+  return trimmed
 }
 
 app.get(
@@ -245,6 +283,149 @@ app.post(
     }
 
     res.json({ ok: true })
+  }),
+)
+
+app.post(
+  '/api/ai/essence',
+  wrap(async (req, res) => {
+    requireSession(req)
+
+    const raw = req.body?.text
+    if (typeof raw !== 'string' || !raw.trim()) {
+      throw new HttpError(400, 'Paste a draft first.')
+    }
+    const text = raw.trim()
+    if (text.length > 4000) {
+      throw new HttpError(400, 'That draft is too long. Keep it under 4,000 characters.')
+    }
+
+    if (!hasAiProvider()) {
+      throw new HttpError(
+        503,
+        withCause(
+          "Trimming isn't available right now. Your draft is unchanged.",
+          'set GEMINI_API_KEY, OPENAI_API_KEY or ANTHROPIC_API_KEY',
+        ),
+      )
+    }
+
+    let trimmed
+    try {
+      trimmed = sanitizeTrimmed(await trimToEssence(text), text)
+    } catch (err) {
+      // The draft and the key never appear in a log line.
+      console.warn(
+        JSON.stringify({
+          event: 'ai_essence_failed',
+          provider: err.provider || aiProviderName(),
+          status: Number.isFinite(err.status) ? err.status : 0,
+        }),
+      )
+      throw new HttpError(
+        502,
+        withCause("The trim didn't come back. Your draft is unchanged.", err.message),
+      )
+    }
+
+    res.json({ trimmed })
+  }),
+)
+
+app.post(
+  '/api/buffer/create',
+  wrap(async (req, res) => {
+    requireSameOrigin(req)
+    requireSession(req)
+
+    const { kind, text: rawText, channelId: rawChannelId, organizationId: rawOrganizationId } = req.body || {}
+
+    if (kind !== 'scheduled' && kind !== 'draft') {
+      throw new HttpError(400, 'Choose where this should go.')
+    }
+    if (typeof rawText !== 'string' || !rawText.trim()) {
+      throw new HttpError(400, 'Paste a draft first.')
+    }
+    const text = rawText.trim()
+    if (text.length > 4000) {
+      throw new HttpError(400, 'That draft is too long. Keep it under 4,000 characters.')
+    }
+    if (typeof rawChannelId !== 'string' || !rawChannelId.trim()) {
+      throw new HttpError(400, 'Pick a channel first.')
+    }
+    if (typeof rawOrganizationId !== 'string' || !rawOrganizationId.trim()) {
+      throw new HttpError(400, 'organizationId is required')
+    }
+
+    const channelId = rawChannelId.trim()
+    const organizationId = rawOrganizationId.trim()
+
+    // Fetch the channel rather than trusting the service posted by the client:
+    // metadata and the channel's existence both depend on Buffer's answer.
+    const channels = (await graphql(req.ctx, CHANNELS_QUERY, { organizationId })).channels || []
+    const channel = channels.find((candidate) => candidate.id === channelId)
+    if (!channel) {
+      throw new HttpError(404, 'That channel is no longer connected. Pick another one.')
+    }
+
+    let schedulingType = 'automatic'
+    let data = await graphql(req.ctx, CREATE_POST_MUTATION, {
+      input: buildPostInput({
+        channelId: channel.id,
+        service: channel.service,
+        text,
+        kind,
+        schedulingType,
+      }),
+    })
+    let post = data?.createPost?.post
+    let message = data?.createPost?.message
+
+    // Instagram personal profiles cannot publish through the API. Buffer asks
+    // for notification scheduling instead: it reminds the person to post at the
+    // slot. That is the only accepted mode, so retry once rather than failing a
+    // post Buffer is willing to take. A MutationError means nothing was created,
+    // so the retry cannot duplicate it.
+    if (
+      !post &&
+      kind === 'scheduled' &&
+      typeof message === 'string' &&
+      /notification scheduling/i.test(message)
+    ) {
+      schedulingType = 'notification'
+      data = await graphql(req.ctx, CREATE_POST_MUTATION, {
+        input: buildPostInput({
+          channelId: channel.id,
+          service: channel.service,
+          text,
+          kind,
+          schedulingType,
+        }),
+      })
+      post = data?.createPost?.post
+      message = data?.createPost?.message
+    }
+
+    if (!post || typeof post.id !== 'string') {
+      throw new HttpError(
+        502,
+        withCause(
+          "Buffer couldn't create that post. Your text is still here. Try again, or save it as a draft.",
+          typeof message === 'string' ? message : undefined,
+        ),
+      )
+    }
+
+    res.json({
+      post: {
+        id: post.id,
+        text: post.text,
+        status: String(post.status || '').toLowerCase(),
+        dueAt: post.dueAt || null,
+        channelId: post.channelId,
+        schedulingType,
+      },
+    })
   }),
 )
 

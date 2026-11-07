@@ -260,6 +260,47 @@ export const DELETE_POST_MUTATION = `
   }
 `
 
+// `createPost` is a different payload union from `deletePost`:
+// PostActionSuccess | MutationError. Text, status and the channel come back on
+// the created post so the client can confirm what was actually made.
+export const CREATE_POST_MUTATION = `
+  mutation CreatePost($input: CreatePostInput!) {
+    createPost(input: $input) {
+      ... on PostActionSuccess {
+        post { id text status dueAt channelId }
+      }
+      ... on MutationError { message }
+    }
+  }
+`
+
+// Ported from Buffer's starter app. `assets: []` is required even with no
+// media, and some networks reject a post without their metadata block.
+export function buildPostInput({ channelId, service, text, kind, schedulingType = 'automatic' }) {
+  const input = {
+    channelId,
+    text,
+    assets: [],
+    needsApproval: false,
+    mode: 'addToQueue',
+    schedulingType,
+  }
+
+  if (kind === 'draft') input.saveToDraft = true
+
+  if (service === 'instagram') {
+    input.metadata = { instagram: { type: 'post', shouldShareToFeed: true } }
+  } else if (service === 'facebook') {
+    input.metadata = { facebook: { type: 'post' } }
+  } else if (service === 'googlebusiness') {
+    input.metadata = { google: { type: 'whats_new' } }
+  } else if (service === 'youtube') {
+    input.metadata = { youtube: { title: text.split('\n')[0].slice(0, 100) } }
+  }
+
+  return input
+}
+
 // Join each post to its channel and trim it to the QueueCard contract in
 // src/types.ts. Media-only posts have no text, so they are skipped in v1.
 export function normalizeQueue(posts, channels) {

@@ -1,7 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { formatTotals } from '../lib/format'
 
-export default function EndPage({ kept, cut }: { kept: number; cut: number }) {
+export default function EndPage({
+  kept,
+  cut,
+  onWrite,
+}: {
+  kept: number
+  cut: number
+  onWrite?: () => void
+}) {
   const headingRef = useRef<HTMLParagraphElement>(null)
 
   useEffect(() => {
@@ -19,6 +27,11 @@ export default function EndPage({ kept, cut }: { kept: number; cut: number }) {
           <a className="act" href="https://publish.buffer.com">
             Back to Buffer
           </a>
+          {onWrite ? (
+            <button className="act" type="button" onClick={onWrite}>
+              Trim a draft
+            </button>
+          ) : null}
           <button className="act" type="button" onClick={() => window.location.reload()}>
             Start over
           </button>

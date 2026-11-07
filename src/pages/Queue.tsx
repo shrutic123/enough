@@ -7,6 +7,7 @@ import { useReducedMotion } from '../hooks/useReducedMotion'
 import { QueueCardView, type ReviewCard } from '../components/QueueCard'
 import { fixtureCards } from '../fixtures/cards'
 import EndPage from './End'
+import EssencePage from './Essence'
 
 const MAX_CARDS = 20
 const STRIKE_MS = 220
@@ -78,6 +79,9 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const [error, setError] = useState<string | null>(null)
   const [cards, setCards] = useState<ReviewCard[]>([])
   const [attempt, setAttempt] = useState(0)
+  // The editor replaces the queue's screen but not the page, so review progress
+  // survives a detour into the editor.
+  const [writing, setWriting] = useState(false)
 
   const [index, setIndex] = useState(0)
   const [done, setDone] = useState(false)
@@ -287,6 +291,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     if (status !== 'ready' || done) return
 
     function onKeyDown(event: KeyboardEvent) {
+      if (writing) return
       if (event.defaultPrevented || event.repeat) return
       if (event.metaKey || event.ctrlKey || event.altKey) return
       if (isEditableTarget(event.target)) return
@@ -306,17 +311,21 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [done, handleCut, handleKeep, status])
+  }, [done, handleCut, handleKeep, status, writing])
 
   useEffect(() => {
-    if (!pendingFocusRef.current || done) return
+    if (writing || !pendingFocusRef.current || done) return
 
     const node = keepButtonRef.current
     if (!node) return
 
     pendingFocusRef.current = false
     node.focus()
-  }, [done, index])
+  }, [done, index, writing])
+
+  if (writing) {
+    return <EssencePage session={session} onBack={() => setWriting(false)} />
+  }
 
   const current = cards[index]
   const remaining = cards.length - index
@@ -368,17 +377,38 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
             <a className="act" href="https://publish.buffer.com">
               Back to Buffer
             </a>
+            {!isDemo ? (
+              <button className="act" type="button" onClick={() => setWriting(true)}>
+                Trim a draft
+              </button>
+            ) : null}
           </div>
         </div>
       </main>
     )
   } else if (done || !current) {
-    screen = <EndPage kept={kept} cut={cut} />
+    screen = (
+      <EndPage
+        kept={kept}
+        cut={cut}
+        onWrite={isDemo ? undefined : () => setWriting(true)}
+      />
+    )
   } else {
     screen = (
       <main className="stage">
         <div className="column">
-          <p className="meta">{formatLeft(remaining)}</p>
+          <p className="meta">
+            {formatLeft(remaining)}
+            {!isDemo ? (
+              <>
+                {' · '}
+                <button className="act" type="button" onClick={() => setWriting(true)}>
+                  Trim a draft
+                </button>
+              </>
+            ) : null}
+          </p>
           <div className={collapsed ? 'slot collapsed' : 'slot'}>
             <QueueCardView
               ref={keepButtonRef}

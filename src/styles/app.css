@@ -61,6 +61,89 @@ a.act {
   cursor: default;
 }
 
+/* Essence editor. Fields are ruled lines, not boxes; the page keeps one column. */
+.essay-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 24px 0 0;
+}
+
+.essay-label {
+  color: var(--graphite);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.essay-input,
+.essay-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.55;
+}
+
+.essay-input {
+  min-height: 132px;
+  resize: vertical;
+}
+
+.essay-input::placeholder {
+  color: var(--graphite);
+  opacity: 1;
+}
+
+.essay-select {
+  max-width: 320px;
+}
+
+.essay-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 20px;
+}
+
+/* The diff. pre-wrap keeps the writer's line breaks; the cut spans collapse
+   inside it without ever leaving a double space. */
+.essay-text {
+  margin: 0;
+  max-width: 52ch;
+  font-size: 1.15rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.essay-error {
+  margin: 12px 0 0;
+  max-width: 52ch;
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.essay-row .essay-error {
+  margin-top: 0;
+}
+
+.essay-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 32px 0 0;
+}
+
+.essay-result .count {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 /* Polite announcements, kept out of the visual layout. */
 .visually-hidden {
   position: absolute;

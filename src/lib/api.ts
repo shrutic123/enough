@@ -1,4 +1,11 @@
-import type { ChannelsResponse, QueueResponse, SessionResponse } from '../types'
+import type {
+  ChannelsResponse,
+  CreateEssenceRequest,
+  CreateEssenceResponse,
+  QueueResponse,
+  SessionResponse,
+  TrimResponse,
+} from '../types'
 
 const FALLBACK = "Buffer didn't respond. Your queue is unchanged. Try again."
 
@@ -53,5 +60,21 @@ export function cutPost(postId: string): Promise<{ ok: true }> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ postId }),
+  })
+}
+
+export function trimEssence(text: string): Promise<TrimResponse> {
+  return request<TrimResponse>('/api/ai/essence', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+}
+
+export function createEssencePost(input: CreateEssenceRequest): Promise<CreateEssenceResponse> {
+  return request<CreateEssenceResponse>('/api/buffer/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
   })
 }
