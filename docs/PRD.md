@@ -5,7 +5,7 @@
 **Working name:** Enough
 **Owner:** Shruti
 
-> A calm way to cut your Buffer queue down to what you actually mean to say.
+> Restraint is not the opposite of creativity; it is what makes creativity legible.
 
 ---
 
@@ -47,7 +47,7 @@ The product is deliberately small. It does two things well rather than becoming 
 - **G1** Connect through Buffer OAuth and read the user's real queue.
 - **G2** Surface a short, ordered review set (near-duplicates, stale items, over-posting) with one plain-language reason per card.
 - **G3** Let the user Keep or Cut each item, where Cut deletes the real Buffer post.
-- **G4** Trim a draft to one idea, show exactly which words were removed, and send the result to Buffer as a scheduled post, draft or idea.
+- **G4** Trim a draft to one idea, show exactly which words were removed, and send the result to Buffer as a scheduled post or a draft.
 - **G5** Feel calm and distinctive enough to be remembered. Target the Delight Award.
 
 ### Non-goals (v1)

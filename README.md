@@ -1,107 +1,137 @@
 # Enough
 
-> A calm way to cut your Buffer queue down to what you actually mean to say.
+> Restraint is not the opposite of creativity; it is what makes creativity legible.
 
-Built for **Buffer Commit 2026**. Connects to your Buffer account with OAuth and works on your real queue and ideas.
+Built for **Buffer Commit 2026**. Connects to Buffer with OAuth and works on the real queue: keep or cut each post, then trim a draft to one idea and send it back.
 
-**Live app:** [TODO: https://your-app.vercel.app]
-**Demo video (2-3 min):** [TODO: link]
-**Write-up:** [TODO: link or see below]
-
-![Enough: cutting a post from the queue](docs/screenshot-cut.png)
+**Live app:** add the Vercel URL after the first deploy.
+**Demo video:** add the link after recording.
 
 ---
 
 ## The problem
 
-People who post every day end up with a queue full of near-duplicates, stale ideas and drafts padded with filler. [TODO: 2-3 sentences in your own voice. Who is this for, and what was the moment that made you build it?]
+A queue is an inventory, and inventories grow. Posts that made sense three weeks ago, two drafts saying the same thing, an error that never sent. Buffer shows all of it and asks you to manage it. Decluttering needs a decision, not another dashboard.
+
+Enough is an editor's desk. One card at a time, one decision: keep it or cut it. When the queue is clear, it says **Enough.**
 
 ## What it does
 
-1. **Queue declutter.** Pulls your scheduled posts and ideas from Buffer. AI flags duplicates, stale items and over-posting, then you decide: Keep, Merge or Cut, one card at a time.
-2. **Essence editor.** Paste a draft and AI trims it to one idea. You see exactly which words were cut, then send the result to Buffer as a scheduled post, draft or idea.
+1. **Queue.** Reads scheduled posts, drafts, errors and posts awaiting approval. Shows one card with its channel, date and a plain-language reason. **K** keeps, **C** cuts. Cut deletes the post in Buffer; a failure keeps the card and says so.
+2. **Essence editor.** Paste a draft, choose a channel and a destination, then **Trim**. The server returns a shorter version; the browser computes the word-level diff, draws the blue pencil through the removed words and collapses them. The result stays editable, then goes to Buffer as a queued post or a draft.
 
-[TODO: add a short GIF of each flow]
+There is no Merge, no ideas manager, and no AI audit in this release. Keep/Cut is the whole review, because one decision per card is the point.
 
 ## Built during the contest window
 
-Contest window: **Oct 28 - Nov 13, 2026.** This repository was created on [TODO: date] and everything in it was written inside the window.
+Contest window: **Oct 28 – Nov 13, 2026.** Everything below was written inside it.
 
 | Area | Status |
 |---|---|
-| OAuth 2.0 + PKCE flow, token refresh, session handling | Adapted from Buffer's `app-client-starter-app` (see Credits) |
-| Queue declutter (fetch, AI audit, Keep/Merge/Cut) | New in this window |
-| Essence editor (AI trim, word-level diff, create in Buffer) | New in this window |
-| Visual identity and motion (`enough.css`) | New in this window |
+| OAuth 2.0 + PKCE, refresh-token rotation, sealed session cookie | Adapted from Buffer's `app-client-starter-app`, then changed for this app |
+| Queue read, one-card review, Keep/Cut motion, real `deletePost` | New in this window |
+| Essence editor, AI trim, word-level diff, `createPost` as queue or draft | New in this window |
+| Visual identity and motion (`enough.css`) | Pre-existing tokens, extended in this window |
 
-Commit history shows the day-by-day build. See [BUILD_LOG.md](BUILD_LOG.md).
+Commit history and [BUILD_LOG.md](BUILD_LOG.md) show the order of work.
 
 ## How it uses the Buffer API
 
-Authentication: OAuth 2.0 Authorization Code flow with PKCE, with `offline_access` for refresh tokens.
+OAuth 2.0 Authorization Code with PKCE, `prompt=consent`, refresh tokens via `offline_access`. Tokens live only in an encrypted, HttpOnly cookie.
 
-Scopes requested: [TODO: list only what you actually use, e.g. `account:read`, `posts:read`, `posts:write`, `ideas:read`, `ideas:write`]
+Scopes requested: `account:read`, `posts:read`, `posts:write`, `offline_access`.
 
 | Feature | GraphQL operation | File |
 |---|---|---|
-| List channels | [TODO: query name] | `api/_lib/buffer.ts` |
-| Read scheduled posts | [TODO] | `api/buffer/queue.ts` |
-| Read ideas | [TODO] | `api/buffer/ideas.ts` |
-| Create post / draft / idea | [TODO] | `api/buffer/create.ts` |
-| [TODO: delete or update, if supported] | [TODO] | [TODO] |
+| Account and organizations | `account` | `server/buffer.js` |
+| Channels | `channels` | `server/buffer.js` |
+| Queue | `posts` (statuses `scheduled`, `draft`, `error`, `needs_approval`) | `server/buffer.js` |
+| Cut | `deletePost` | `server/buffer.js`, `server/app.js` |
+| Create queue post or draft | `createPost` | `server/buffer.js`, `server/app.js` |
+
+The queue is sorted by `dueAt` in JavaScript with missing dates last; only the first 50 posts are read, and the review is capped at 20 cards.
 
 ## Run it locally
 
-Requirements: Node [TODO: version], a Buffer account, an AI provider key.
+Requirements: Node 22, npm, a Buffer account, and one AI provider key.
 
 ```bash
-git clone [TODO: repo url]
+git clone https://github.com/shrutic123/enough.git
 cd enough
-cp .env.example .env      # fill in the values
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-Buffer requires **HTTPS redirect URIs, even on localhost**. [TODO: document how you did it, e.g. a local certificate via mkcert or the dev command you used.]
+Fill `.env` with the Buffer client ID and secret, and one of `GEMINI_API_KEY`, `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
 
-1. In Buffer, open Settings > API > App Clients and create a client.
-2. Add `https://localhost:[PORT]/api/auth/callback` as a redirect URI (and your production one).
-3. Put the client ID and secret in `.env`.
+Buffer requires **HTTPS redirect URIs even on localhost**, and compares them character for character. Vite serves HTTPS locally through `@vitejs/plugin-basic-ssl`.
+
+1. In Buffer, open **Settings → API** and create or edit the app client.
+2. Enable `account:read`, `posts:read`, `posts:write` and `offline_access`.
+3. Register `https://localhost:5173/api/auth/callback` (and your production callback later).
+4. Put the client ID and secret in `.env`.
+
+Open `https://localhost:5173`, accept the self-signed certificate, and click **Connect Buffer**.
 
 ## Deploy
 
-[TODO: Vercel steps. Set the same env vars in the host, generate a fresh `SESSION_SECRET`, register the production redirect URI, then smoke test: connect, create something, sign out, reconnect.]
+See [docs/DEPLOY.md](docs/DEPLOY.md) for the Vercel runbook: environment variables, the production redirect URI, and the smoke test.
 
 ## Architecture
 
 ```
-Browser (React) --> /api (server functions) --> Buffer GraphQL API
-                                           \--> AI provider
+Browser (React + Vite)
+  │ same-origin fetch, no tokens
+  ▼
+/api  (one Express app)
+  ├─ /api/auth/*     OAuth, PKCE, session
+  ├─ /api/buffer/*   account, channels, queue, cut, create
+  └─ /api/ai/essence trim
+  │
+  ├──► Buffer GraphQL  https://api.buffer.com
+  ├──► Buffer OAuth    https://auth.buffer.com
+  └──► AI provider
 ```
 
-- Tokens live server-side in an encrypted, HttpOnly session cookie. They never reach the browser.
-- The AI key is server-side only.
-- [TODO: one line on rate limits / caching of channels and organization IDs]
+- The server is plain JavaScript ESM; the client is TypeScript.
+- One Express function at `/api` locally and on Vercel.
+- A failed Cut never removes the card. The card dissolves only after Buffer confirms the delete.
+- The browser never sees a Buffer token or the AI key.
+
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## AI and your data
 
-- What is sent to the AI provider: [TODO: e.g. post text only, nothing else]
-- What is stored: [TODO: e.g. nothing beyond the session cookie]
-- Model: [TODO]
+- **Trim:** only the draft text is sent. No account id, email, channel name or queue data.
+- **Queue:** no post text is sent to an AI provider in this release. Reasons come from status and date.
+- **Stored:** nothing beyond the session cookie. Drafts are not saved on the server.
+- **Provider:** whichever key is set, in order: Gemini (`gemini-3.5-flash-lite`), OpenAI (`gpt-4.1-mini`), Anthropic (`claude-sonnet-4-5`). `AI_MODEL` overrides the model.
+- The trim prompt forbids adding facts, links, hashtags, emoji or new sentences, and asks for the text only. The client computes the diff, so a mark can only appear on a word the model actually dropped.
 
 ## Design notes
 
-Enough looks like an editor's desk. The blue pencil is the only accent, and it only ever marks a cut. Motion answers an action, and the one unprompted moment is the "Enough." end screen. Reduced-motion users get fades instead. [TODO: anything you tried and dropped]
+One 640px column, left-aligned. Instrument Sans everywhere; Instrument Serif italic only for "Enough." The blue pencil `#2F4BFF` is the only accent and only ever marks a cut or holds focus. Actions are text with key hints, not buttons in boxes.
+
+Motion answers an action: the pencil draws (220ms), the card dissolves (320ms), the gap collapses (280ms). The one unprompted moment is the end screen, where "Enough." settles once. With `prefers-reduced-motion`, those become 120ms fades with no transforms and no stagger.
+
+Dropped on purpose: Merge, because it is two calls with a partial-failure state; an AI queue audit, because deterministic reasons were enough and the model was not allowed to make the decision; idea creation, because ideas cannot be updated or deleted and cannot join Keep/Cut.
 
 ## Known limits
 
-- [TODO: honest list, e.g. channels or post types not covered, API actions not available]
+- Cut is permanent. There is no undo; use a test account for demos.
+- The first organization on the account is used. There is no organization or channel switcher.
+- One page of the queue (50 posts) and at most 20 review cards.
+- Media-only posts are skipped because they have no text.
+- Ideas are not shown or created.
+- The queue is a snapshot taken on load. Another device's changes appear on refresh.
+- If Buffer has no posting slots on a channel, "Add to queue" is refused by Buffer; save as a draft instead.
 
 ## Credits
 
-- Starter OAuth structure adapted from Buffer's [`buffer-sample-apps`](https://github.com/bufferapp/buffer-sample-apps) (`app-client-starter-app`).
+- OAuth, refresh and `createPost` shapes adapted from Buffer's [`buffer-sample-apps`](https://github.com/bufferapp/buffer-sample-apps) (`app-client-starter-app`).
 - Fonts: Instrument Sans and Instrument Serif (Google Fonts).
 
 ## License
 
-[TODO: MIT is a common choice]
+MIT.
