@@ -164,30 +164,30 @@ export default function EssencePage({
     window.requestAnimationFrame(() => draftField.current?.focus())
   }
 
+  const [trimRequest, setTrimRequest] = useState<string | null>(null)
+
   function handleTrim() {
     if (!canTrim) return
+    setTrimRequest(draft)
+  }
 
-    const source = draft
+  useEffect(() => {
+    if (!trimRequest) return
+    const source = trimRequest
     setTrimming(true)
     setTrimError(null)
 
-    const body = JSON.stringify({ text: source })
-
-    // Defer the fetch out of the click handler; React's event handling was
-    // swallowing the promise resolution otherwise.
-    window.setTimeout(() => {
-      fetch('/api/ai/essence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      })
-        .then(async (r) => {
-          const data = await r.json()
-          if (!r.ok) throw new Error((typeof data?.error === 'string' && data.error) || 'fallback')
-          return data as { trimmed: string }
-        })
-        .then((response) => {
-          if (!mounted.current) return
+    let cancelled = false
+    const xhr = new XMLHttpRequest()
+    xhr.open('POST', '/api/ai/essence', true)
+    xhr.setRequestHeader('Content-Type', 'application/json')
+    xhr.onreadystatechange = () => {
+      if (xhr.readyState !== 4) return
+      try {
+        const data = JSON.parse(xhr.responseText)
+        if (xhr.status >= 200 && xhr.status < 300) {
+          const response = data as { trimmed: string }
+          if (cancelled || !mounted.current) return
           if (draftRef.current !== source) return
 
           clearAnimation()
@@ -219,16 +219,23 @@ export default function EssencePage({
               reveal()
             })
           }
-        })
-        .catch((reason: unknown) => {
-          if (!mounted.current) return
-          setTrimError(messageFor(reason, "Couldn't trim that draft. Your text is unchanged."))
-        })
-        .finally(() => {
-          if (mounted.current) setTrimming(false)
-        })
-    }, 0)
-  }
+        } else {
+          throw new Error((typeof data?.error === 'string' && data.error) || 'fallback')
+        }
+      } catch (e) {
+        if (cancelled || !mounted.current) return
+        setTrimError(messageFor(e, "Couldn't trim that draft. Your text is unchanged."))
+      } finally {
+        if (!cancelled && mounted.current) setTrimming(false)
+        setTrimRequest(null)
+      }
+    }
+    xhr.send(JSON.stringify({ text: source }))
+
+    return () => {
+      cancelled = true
+    }
+  }, [trimRequest])
 
   async function handleSend() {
     if (!canSend || !organizationId || !channelId) return
