@@ -52,6 +52,7 @@ export default function EssencePage({
   const [collapsed, setCollapsed] = useState(false)
 
   const [trimming, setTrimming] = useState(false)
+  const [trimKey, setTrimKey] = useState(0)
   const [trimError, setTrimError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -164,31 +165,33 @@ export default function EssencePage({
     window.requestAnimationFrame(() => draftField.current?.focus())
   }
 
-  const [trimRequest, setTrimRequest] = useState<string | null>(null)
-
   function handleTrim() {
     if (!canTrim) return
-    setTrimRequest(draft)
-  }
 
-  useEffect(() => {
-    if (!trimRequest) return
-    const source = trimRequest
+    const source = draft
     setTrimming(true)
     setTrimError(null)
 
-    let cancelled = false
-    const xhr = new XMLHttpRequest()
-    xhr.open('POST', '/api/ai/essence', true)
-    xhr.setRequestHeader('Content-Type', 'application/json')
-    xhr.onreadystatechange = () => {
-      if (xhr.readyState !== 4) return
-      try {
-        const data = JSON.parse(xhr.responseText)
-        if (xhr.status >= 200 && xhr.status < 300) {
-          const response = data as { trimmed: string }
-          if (cancelled || !mounted.current) return
-          if (draftRef.current !== source) return
+    const body = JSON.stringify({ text: source })
+
+    // Defer the fetch out of the click handler; React's event handling was
+    // swallowing the promise resolution otherwise.
+    setTimeout(() => {
+      fetch('/api/ai/essence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+        .then(async (r) => {
+          const data = await r.json()
+          if (!r.ok) throw new Error((typeof data?.error === 'string' && data.error) || 'fallback')
+          return data as { trimmed: string }
+        })
+        .then((response) => {
+          if (!mounted.current) return
+          if (draftRef.current !== source) {
+            return
+          }
 
           clearAnimation()
           const nextParts = diffText(source, response.trimmed)
@@ -198,6 +201,7 @@ export default function EssencePage({
           setResult(response.trimmed)
           setCollapsed(false)
           setPhase('diff')
+          setTrimKey((k) => k + 1)
           setAnnouncement(`Trimmed. ${formatWords(countWords(response.trimmed))}.`)
 
           const reveal = () => {
@@ -219,23 +223,18 @@ export default function EssencePage({
               reveal()
             })
           }
-        } else {
-          throw new Error((typeof data?.error === 'string' && data.error) || 'fallback')
-        }
-      } catch (e) {
-        if (cancelled || !mounted.current) return
-        setTrimError(messageFor(e, "Couldn't trim that draft. Your text is unchanged."))
-      } finally {
-        if (!cancelled && mounted.current) setTrimming(false)
-        setTrimRequest(null)
-      }
-    }
-    xhr.send(JSON.stringify({ text: source }))
+        })
+        .catch((reason: unknown) => {
+          if (!mounted.current) return
+          setTrimError(messageFor(reason, "Couldn't trim that draft. Your text is unchanged."))
+        })
+        .finally(() => {
+          if (mounted.current) setTrimming(false)
+        })
+    }, 0)
 
-    return () => {
-      cancelled = true
-    }
-  }, [trimRequest])
+    return
+  }
 
   async function handleSend() {
     if (!canSend || !organizationId || !channelId) return
@@ -335,6 +334,7 @@ export default function EssencePage({
             </div>
           ) : (
             <section
+              key={trimKey}
               className="essay-sheet"
               aria-label="Trimmed draft"
               aria-busy={phase === 'diff' ? true : undefined}
