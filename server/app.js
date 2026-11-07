@@ -296,7 +296,8 @@ app.post(
 app.post(
   '/api/ai/essence',
   wrap(async (req, res) => {
-    requireSession(req)
+    // Trimming is a pure text operation; it does not need a Buffer connection.
+    // Keeping it session-free lets a draft be trimmed before connecting.
 
     const raw = req.body?.text
     if (typeof raw !== 'string' || !raw.trim()) {

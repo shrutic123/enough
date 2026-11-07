@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import type { Channel, EssenceKind, SchedulingType, SessionResponse } from '../types'
-import { createEssencePost, getChannels, trimEssence } from '../lib/api'
+import { createEssencePost, getChannels } from '../lib/api'
 import { countWords, diffText } from '../lib/diff'
 import type { DiffPart } from '../lib/diff'
 import { useReducedMotion } from '../hooks/useReducedMotion'
@@ -44,7 +44,7 @@ export default function EssencePage({
   const [channelId, setChannelId] = useState('')
   const [channelState, setChannelState] = useState<ChannelState>('loading')
   const [channelError, setChannelError] = useState<string | null>(null)
-  const [channelAttempt, setChannelAttempt] = useState(0)
+  // channelAttempt removed; channel errors show a connect prompt instead.
 
   const [phase, setPhase] = useState<Phase>('edit')
   const [parts, setParts] = useState<DiffPart[]>([])
@@ -113,7 +113,7 @@ export default function EssencePage({
     return () => {
       active = false
     }
-  }, [channelAttempt, organizationId])
+  }, [organizationId])
 
   const wordCount = countWords(draft)
   const resultWords = countWords(result)
@@ -164,57 +164,74 @@ export default function EssencePage({
     window.requestAnimationFrame(() => draftField.current?.focus())
   }
 
-  async function handleTrim() {
+  function handleTrim() {
     if (!canTrim) return
 
     const source = draft
     setTrimming(true)
     setTrimError(null)
 
-    try {
-      const response = await trimEssence(source)
-      if (!mounted.current) return
-      if (draftRef.current !== source) return
+    const body = JSON.stringify({ text: source })
 
-      clearAnimation()
-      const nextParts = diffText(source, response.trimmed)
-      const cuts = nextParts.filter((part) => part.removed).length
-      // 220ms strike + 25ms per cut + 320ms collapse, so the last mark is never
-      // cut off by the swap. Capped so a very heavy trim still resolves.
-      const revealMs = Math.min(220 + Math.max(cuts - 1, 0) * 25 + 320 + 60, 2200)
-      setParts(nextParts)
-      setResult(response.trimmed)
-      setCollapsed(false)
-      setPhase('diff')
-      setAnnouncement(`Trimmed. ${formatWords(countWords(response.trimmed))}.`)
-
-      const reveal = () => {
-        setCollapsed(true)
-        // Swap the animation for the editable result once the last cut has
-        // collapsed. Reduced motion skips straight to the result.
-        swapTimer.current = window.setTimeout(
-          () => {
-            swapTimer.current = null
-            setPhase('result')
-          },
-          reduced ? 0 : revealMs,
-        )
-      }
-
-      if (reduced) {
-        reveal()
-      } else {
-        frame.current = window.requestAnimationFrame(() => {
-          frame.current = null
-          reveal()
+    // Defer the fetch out of the click handler; React's event handling was
+    // swallowing the promise resolution otherwise.
+    setTimeout(() => {
+      fetch('/api/ai/essence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      })
+        .then(async (r) => {
+          const data = await r.json()
+          if (!r.ok) throw new Error((typeof data?.error === 'string' && data.error) || 'fallback')
+          return data as { trimmed: string }
         })
-      }
-    } catch (reason: unknown) {
-      if (!mounted.current) return
-      setTrimError(messageFor(reason, "Couldn't trim that draft. Your text is unchanged. Try again."))
-    } finally {
-      if (mounted.current) setTrimming(false)
-    }
+        .then((response) => {
+          if (!mounted.current) return
+          if (draftRef.current !== source) {
+            return
+          }
+
+          clearAnimation()
+          const nextParts = diffText(source, response.trimmed)
+          const cuts = nextParts.filter((part) => part.removed).length
+          const revealMs = Math.min(220 + Math.max(cuts - 1, 0) * 25 + 320 + 60, 2200)
+          setParts(nextParts)
+          setResult(response.trimmed)
+          setCollapsed(false)
+          setPhase('diff')
+          setAnnouncement(`Trimmed. ${formatWords(countWords(response.trimmed))}.`)
+
+          const reveal = () => {
+            setCollapsed(true)
+            swapTimer.current = window.setTimeout(
+              () => {
+                swapTimer.current = null
+                setPhase('result')
+              },
+              reduced ? 0 : revealMs,
+            )
+          }
+
+          if (reduced) {
+            reveal()
+          } else {
+            frame.current = window.requestAnimationFrame(() => {
+              frame.current = null
+              reveal()
+            })
+          }
+        })
+        .catch((reason: unknown) => {
+          if (!mounted.current) return
+          setTrimError(messageFor(reason, "Couldn't trim that draft. Your text is unchanged."))
+        })
+        .finally(() => {
+          if (mounted.current) setTrimming(false)
+        })
+    }, 0)
+
+    return
   }
 
   async function handleSend() {
@@ -251,23 +268,6 @@ export default function EssencePage({
     } finally {
       if (mounted.current) setSending(false)
     }
-  }
-
-  if (!organizationId) {
-    return (
-      <main className="stage">
-        <div className="column">
-          <p className="meta" role="alert">
-            No Buffer organization found. Reconnect and try again.
-          </p>
-          <div className="actions">
-            <button className="act" type="button" onClick={onBack}>
-              Back to the queue
-            </button>
-          </div>
-        </div>
-      </main>
-    )
   }
 
   if (phase === 'sent' && sent) {
@@ -310,10 +310,11 @@ export default function EssencePage({
           <p className="body-copy">Paste a draft. Keep one idea.</p>
 
           {phase === 'edit' ? (
-            <div className="essay-field">
+            <div className="essay-sheet">
               <label className="essay-label" htmlFor="essence-draft">
                 Draft
               </label>
+              <p className="essay-count">{formatWords(wordCount)}</p>
               <textarea
                 id="essence-draft"
                 ref={draftField}
@@ -323,59 +324,56 @@ export default function EssencePage({
                 placeholder="Paste a draft."
                 rows={8}
               />
-              <div className="essay-row">
-                <p className="count">{formatWords(wordCount)}</p>
-                {tooLong ? (
-                  <p className="essay-error" role="alert">
-                    That draft is too long. Keep it under 4,000 characters.
-                  </p>
-                ) : null}
-              </div>
+              {tooLong ? (
+                <p className="essay-error" role="alert">
+                  That draft is too long. Keep it under 4,000 characters.
+                </p>
+              ) : null}
             </div>
           ) : (
             <section
-              className="essay-field"
+              className="essay-sheet"
               aria-label="Trimmed draft"
               aria-busy={phase === 'diff' ? true : undefined}
             >
+              <p className="essay-label">
+                {phase === 'diff' ? 'Draft' : 'Trimmed draft'}
+              </p>
+              <p className="essay-count">
+                {formatWords(wordCount)} to {resultWords}.
+              </p>
               {phase === 'diff' ? (
-                <>
-                  <p className="essay-label">Draft</p>
-                  <WordDiff parts={parts} collapsed={collapsed} />
-                </>
+                <WordDiff parts={parts} collapsed={collapsed} />
               ) : (
-                <>
-                  <label className="essay-label" htmlFor="essence-result">
-                    Trimmed draft
-                  </label>
-                  <textarea
-                    id="essence-result"
-                    className="essay-input"
-                    value={result}
-                    onChange={(event) => setResult(event.target.value)}
-                    readOnly={sending}
-                    rows={8}
-                  />
-                </>
+                <textarea
+                  id="essence-result"
+                  className="essay-input"
+                  value={result}
+                  onChange={(event) => setResult(event.target.value)}
+                  readOnly={sending}
+                  rows={8}
+                />
               )}
-              <div className="essay-row">
+              {limit ? (
                 <p className="count">
-                  {formatWords(wordCount)} to {resultWords}.
+                  {result.length.toLocaleString('en-US')} of{' '}
+                  {limit.max.toLocaleString('en-US')} characters for {limit.label}.
+                  {overLimit ? ' Shorten it to send.' : ''}
                 </p>
-                {limit ? (
-                  <p className="count">
-                    {result.length.toLocaleString('en-US')} of{' '}
-                    {limit.max.toLocaleString('en-US')} characters for {limit.label}.
-                    {overLimit ? ' Shorten it to send.' : ''}
-                  </p>
-                ) : null}
-              </div>
+              ) : null}
             </section>
           )}
 
           <div className="essay-meta">
             <div className="essay-field">
-              {channelState === 'ready' && channels.length > 0 ? (
+              {!organizationId ? (
+                <div className="essay-row">
+                  <p className="count">Connect Buffer to choose a channel and send.</p>
+                  <a className="act" href="/api/auth/login">
+                    Connect Buffer
+                  </a>
+                </div>
+              ) : channelState === 'ready' && channels.length > 0 ? (
               <>
                 <label className="essay-label" htmlFor="essence-channel">
                   Channel
@@ -404,16 +402,14 @@ export default function EssencePage({
               <p className="count">Reading your channels.</p>
             ) : channelState === 'error' ? (
               <div className="essay-row">
-                <p className="essay-error" role="alert">
-                  {channelError ?? "Couldn't read your channels. Try again."}
+                <p className="count">
+                  {channelError === "Buffer didn't respond. Your queue is unchanged. Try again."
+                    ? 'Connect Buffer to choose a channel and send.'
+                    : (channelError ?? "Couldn't read your channels. Try again.")}
                 </p>
-                <button
-                  className="act"
-                  type="button"
-                  onClick={() => setChannelAttempt((value) => value + 1)}
-                >
-                  Try again
-                </button>
+                <a className="act" href="/api/auth/login">
+                  Connect Buffer
+                </a>
               </div>
             ) : (
               <div className="essay-row">
@@ -469,8 +465,8 @@ export default function EssencePage({
           </div>
           </div>
 
-          <div className="actions">
-            {phase === 'edit' ? (
+          {phase === 'edit' ? (
+            <div className="actions">
               <button
                 className="act"
                 type="button"
@@ -479,22 +475,22 @@ export default function EssencePage({
               >
                 {trimming ? 'Trimming.' : 'Trim'}
               </button>
-            ) : phase === 'result' ? (
-              <>
-                <button
-                  className="act"
-                  type="button"
-                  aria-disabled={canSend ? undefined : true}
-                  onClick={handleSend}
-                >
-                  {sending ? 'Sending.' : 'Send to Buffer'}
-                </button>
-                <button className="act" type="button" onClick={handleEditDraft}>
-                  Edit draft
-                </button>
-              </>
-            ) : null}
-          </div>
+            </div>
+          ) : phase === 'result' ? (
+            <div className="actions">
+              <button
+                className="act"
+                type="button"
+                aria-disabled={canSend ? undefined : true}
+                onClick={handleSend}
+              >
+                {sending ? 'Sending.' : 'Send to Buffer'}
+              </button>
+              <button className="act" type="button" onClick={handleEditDraft}>
+                Edit draft
+              </button>
+            </div>
+          ) : null}
 
           {trimError ? (
             <p className="essay-error" role="alert">

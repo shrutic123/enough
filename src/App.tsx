@@ -3,6 +3,7 @@ import { getSession } from './lib/api'
 import type { SessionResponse } from './types'
 import ConnectPage from './pages/Connect'
 import QueuePage from './pages/Queue'
+import EssencePage from './pages/Essence'
 import { useInputModality } from './hooks/useInputModality'
 
 const DEMO_SESSION: SessionResponse = {
@@ -19,6 +20,7 @@ export default function App() {
   const [session, setSession] = useState<SessionResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const isDemo = import.meta.env.DEV && new URLSearchParams(window.location.search).get('demo') === '1'
+  const demoEssence = isDemo && new URLSearchParams(window.location.search).get('essence') === '1'
 
   useEffect(() => {
     if (isDemo) return
@@ -43,6 +45,16 @@ export default function App() {
   }, [isDemo])
 
   // Dev-only fixture mode. `import.meta.env.DEV` is false in production builds.
+  if (demoEssence) {
+    return (
+      <EssencePage
+        session={DEMO_SESSION}
+        onBack={() => {
+          window.location.search = '?demo=1'
+        }}
+      />
+    )
+  }
   if (isDemo) return <QueuePage session={DEMO_SESSION} />
 
   if (error) {
