@@ -52,7 +52,6 @@ export default function EssencePage({
   const [collapsed, setCollapsed] = useState(false)
 
   const [trimming, setTrimming] = useState(false)
-  const [trimKey, setTrimKey] = useState(0)
   const [trimError, setTrimError] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState<string | null>(null)
@@ -156,7 +155,6 @@ export default function EssencePage({
     clearAnimation()
     setPhase('edit')
     setParts([])
-    setResult('')
     setCollapsed(false)
     setSendError(null)
     setAnnouncement('')
@@ -199,9 +197,9 @@ export default function EssencePage({
           const revealMs = Math.min(220 + Math.max(cuts - 1, 0) * 25 + 320 + 60, 2200)
           setParts(nextParts)
           setResult(response.trimmed)
+          setDraft(response.trimmed)
           setCollapsed(false)
           setPhase('diff')
-          setTrimKey((k) => k + 1)
           setAnnouncement(`Trimmed. ${formatWords(countWords(response.trimmed))}.`)
 
           const reveal = () => {
@@ -218,10 +216,13 @@ export default function EssencePage({
           if (reduced) {
             reveal()
           } else {
-            frame.current = window.requestAnimationFrame(() => {
+            // A macrotask (not rAF) ensures the initial, un-struck state is
+            // actually painted before the class change, so the CSS transition
+            // fires. rAF runs before paint and can skip the initial frame.
+            frame.current = window.setTimeout(() => {
               frame.current = null
               reveal()
-            })
+            }, 50) as unknown as number
           }
         })
         .catch((reason: unknown) => {
@@ -334,7 +335,6 @@ export default function EssencePage({
             </div>
           ) : (
             <section
-              key={trimKey}
               className="essay-sheet"
               aria-label="Trimmed draft"
               aria-busy={phase === 'diff' ? true : undefined}

@@ -384,7 +384,15 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   }, [done, index, writing])
 
   if (writing) {
-    return <EssencePage session={session} onBack={() => setWriting(false)} />
+    return (
+      <EssencePage
+        session={session}
+        onBack={() => {
+          setWriting(false)
+          setAttempt((value) => value + 1)
+        }}
+      />
+    )
   }
 
   const current = cards[index]
