@@ -60,6 +60,7 @@ export default function EssencePage({
 
   const mounted = useRef(true)
   const draftRef = useRef('')
+  const draftField = useRef<HTMLTextAreaElement | null>(null)
   const swapTimer = useRef<number | null>(null)
   const frame = useRef<number | null>(null)
 
@@ -119,10 +120,19 @@ export default function EssencePage({
   const tooLong = draft.length > MAX_DRAFT
   const busy = trimming || sending
   const selectedChannel = channels.find((channel) => channel.id === channelId)
-  const needsImage = selectedChannel?.service === 'instagram' && !imageUrl.trim()
+  const limit = selectedChannel?.limit
+  const unsupported = limit ? !limit.supported : false
+  const overLimit = limit ? result.length > limit.max : false
+  const needsImage = Boolean(limit?.needsImage) && !imageUrl.trim()
   const canTrim = !busy && draft.trim().length > 0 && !tooLong
   const canSend =
-    phase === 'result' && !busy && result.trim().length > 0 && Boolean(channelId) && !needsImage
+    phase === 'result' &&
+    !busy &&
+    result.trim().length > 0 &&
+    Boolean(channelId) &&
+    !needsImage &&
+    !unsupported &&
+    !overLimit
 
   function handleDraftChange(event: ChangeEvent<HTMLTextAreaElement>) {
     setDraft(event.target.value)
@@ -139,6 +149,19 @@ export default function EssencePage({
       setSendError(null)
       setAnnouncement('')
     }
+  }
+
+  function handleEditDraft() {
+    clearAnimation()
+    setPhase('edit')
+    setParts([])
+    setResult('')
+    setCollapsed(false)
+    setSendError(null)
+    setAnnouncement('')
+    // The draft replaces the result in the same slot, so put the cursor back
+    // where the writing is.
+    window.requestAnimationFrame(() => draftField.current?.focus())
   }
 
   async function handleTrim() {
@@ -286,27 +309,69 @@ export default function EssencePage({
           <h1 className="headline">Essence</h1>
           <p className="body-copy">Paste a draft. Keep one idea.</p>
 
-          <div className="essay-field">
-            <label className="essay-label" htmlFor="essence-draft">
-              Draft
-            </label>
-            <textarea
-              id="essence-draft"
-              className="essay-input"
-              value={draft}
-              onChange={handleDraftChange}
-              placeholder="Paste a draft."
-              rows={8}
-            />
-            <div className="essay-row">
-              <p className="count">{formatWords(wordCount)}</p>
-              {tooLong ? (
-                <p className="essay-error" role="alert">
-                  That draft is too long. Keep it under 4,000 characters.
-                </p>
-              ) : null}
+          {phase === 'edit' ? (
+            <div className="essay-field">
+              <label className="essay-label" htmlFor="essence-draft">
+                Draft
+              </label>
+              <textarea
+                id="essence-draft"
+                ref={draftField}
+                className="essay-input"
+                value={draft}
+                onChange={handleDraftChange}
+                placeholder="Paste a draft."
+                rows={8}
+              />
+              <div className="essay-row">
+                <p className="count">{formatWords(wordCount)}</p>
+                {tooLong ? (
+                  <p className="essay-error" role="alert">
+                    That draft is too long. Keep it under 4,000 characters.
+                  </p>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : (
+            <section
+              className="essay-field essay-result"
+              aria-label="Trimmed draft"
+              aria-busy={phase === 'diff' ? true : undefined}
+            >
+              {phase === 'diff' ? (
+                <>
+                  <p className="essay-label">Draft</p>
+                  <WordDiff parts={parts} collapsed={collapsed} />
+                </>
+              ) : (
+                <>
+                  <label className="essay-label" htmlFor="essence-result">
+                    Trimmed draft
+                  </label>
+                  <textarea
+                    id="essence-result"
+                    className="essay-input"
+                    value={result}
+                    onChange={(event) => setResult(event.target.value)}
+                    readOnly={sending}
+                    rows={8}
+                  />
+                </>
+              )}
+              <div className="essay-row">
+                <p className="count">
+                  {formatWords(wordCount)} to {resultWords}.
+                </p>
+                {limit ? (
+                  <p className="count">
+                    {result.length.toLocaleString('en-US')} of{' '}
+                    {limit.max.toLocaleString('en-US')} characters for {limit.label}.
+                    {overLimit ? ' Shorten it to send.' : ''}
+                  </p>
+                ) : null}
+              </div>
+            </section>
+          )}
 
           <div className="essay-field">
             {channelState === 'ready' && channels.length > 0 ? (
@@ -326,6 +391,13 @@ export default function EssencePage({
                     </option>
                   ))}
                 </select>
+                {limit && !limit.supported ? (
+                  <p className="essay-error" role="alert">
+                    {limit.note} Pick another channel.
+                  </p>
+                ) : limit?.note ? (
+                  <p className="count">{limit.note}</p>
+                ) : null}
               </>
             ) : channelState === 'loading' ? (
               <p className="count">Reading your channels.</p>
@@ -352,7 +424,7 @@ export default function EssencePage({
             )}
           </div>
 
-          {selectedChannel?.service === 'instagram' ? (
+          {limit?.needsImage ? (
             <div className="essay-field">
               <label className="essay-label" htmlFor="essence-image">
                 Image URL
@@ -371,7 +443,7 @@ export default function EssencePage({
                 autoComplete="off"
                 spellCheck={false}
               />
-              <p className="count">Instagram needs an image or video. Paste a public link.</p>
+              <p className="count">{limit.label} needs an image. Paste a public link.</p>
             </div>
           ) : null}
 
@@ -396,23 +468,29 @@ export default function EssencePage({
           </div>
 
           <div className="actions">
-            <button
-              className="act"
-              type="button"
-              aria-disabled={canTrim ? undefined : true}
-              onClick={handleTrim}
-            >
-              {trimming ? 'Trimming.' : 'Trim'}
-            </button>
-            {phase === 'result' ? (
+            {phase === 'edit' ? (
               <button
                 className="act"
                 type="button"
-                aria-disabled={canSend ? undefined : true}
-                onClick={handleSend}
+                aria-disabled={canTrim ? undefined : true}
+                onClick={handleTrim}
               >
-                {sending ? 'Sending.' : 'Send to Buffer'}
+                {trimming ? 'Trimming.' : 'Trim'}
               </button>
+            ) : phase === 'result' ? (
+              <>
+                <button
+                  className="act"
+                  type="button"
+                  aria-disabled={canSend ? undefined : true}
+                  onClick={handleSend}
+                >
+                  {sending ? 'Sending.' : 'Send to Buffer'}
+                </button>
+                <button className="act" type="button" onClick={handleEditDraft}>
+                  Edit draft
+                </button>
+              </>
             ) : null}
           </div>
 
@@ -426,35 +504,6 @@ export default function EssencePage({
             <p className="essay-error" role="alert">
               {sendError}
             </p>
-          ) : null}
-
-          {phase !== 'edit' ? (
-            <section
-              className="essay-result"
-              aria-label="Trimmed draft"
-              aria-busy={phase === 'diff' ? true : undefined}
-            >
-              {phase === 'diff' ? (
-                <WordDiff parts={parts} collapsed={collapsed} />
-              ) : (
-                <>
-                  <label className="essay-label" htmlFor="essence-result">
-                    Trimmed draft
-                  </label>
-                  <textarea
-                    id="essence-result"
-                    className="essay-input"
-                    value={result}
-                    onChange={(event) => setResult(event.target.value)}
-                    readOnly={sending}
-                    rows={8}
-                  />
-                </>
-              )}
-              <p className="count">
-                {formatWords(wordCount)} to {resultWords}.
-              </p>
-            </section>
           ) : null}
         </div>
       </main>

@@ -16,6 +16,7 @@ import {
   normalizeQueue,
 } from './buffer.js'
 import { aiProviderName, hasAiProvider, trimToEssence } from './ai.js'
+import { checkPost, postLimit } from './limits.js'
 
 const app = express()
 app.use(express.json())
@@ -227,8 +228,14 @@ app.get(
 
     const data = await graphql(req.ctx, CHANNELS_QUERY, { organizationId })
     // Return disconnected channels too, with the flag, so the UI can explain
-    // why an account is missing from the picker.
-    res.json({ channels: data.channels })
+    // why an account is missing from the picker. Each channel carries what the
+    // network accepts, so the editor can warn before a send is attempted.
+    res.json({
+      channels: (data.channels || []).map((channel) => ({
+        ...channel,
+        limit: postLimit(channel.service),
+      })),
+    })
   }),
 )
 
@@ -393,6 +400,11 @@ app.post(
     const channel = channels.find((candidate) => candidate.id === channelId)
     if (!channel) {
       throw new HttpError(404, 'That channel is no longer connected. Pick another one.')
+    }
+
+    const blocked = checkPost({ service: channel.service, text, imageUrl })
+    if (blocked) {
+      throw new HttpError(400, blocked)
     }
 
     let schedulingType = 'automatic'

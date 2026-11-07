@@ -11,7 +11,7 @@ import EssencePage from './Essence'
 
 const MAX_CARDS = 20
 const STRIKE_MS = 220
-const KEEP_MS = 180
+const KEEP_MS = 220
 const COLLAPSE_MS = 280
 const DISSOLVE_FALLBACK_MS = 400
 const REDUCED_KEEP_MS = 120
@@ -331,6 +331,14 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
 
   const current = cards[index]
   const remaining = cards.length - index
+  const remainingShare = cards.length > 0 ? Math.round((remaining / cards.length) * 100) : 0
+  const stackClass = [
+    'sheet-stack',
+    remaining > 1 ? 'stacked' : '',
+    gone || keptVisual ? 'leaving' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
   let screen: ReactNode
 
   if (!isDemo && !organizationId) {
@@ -400,30 +408,44 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     screen = (
       <main className="stage">
         <div className="column">
-          <p className="meta">
-            {formatLeft(remaining)}
-            {!isDemo ? (
-              <>
-                {' · '}
-                <button className="act" type="button" onClick={() => setWriting(true)}>
-                  Trim a draft
-                </button>
-              </>
-            ) : null}
-          </p>
-          <div className={collapsed ? 'slot collapsed' : 'slot'}>
-            <QueueCardView
-              ref={keepButtonRef}
-              card={current}
-              struck={struck}
-              kept={keptVisual}
-              gone={gone}
-              busy={phase !== 'idle'}
-              error={cutError}
-              onKeep={handleKeep}
-              onCut={handleCut}
-              onAnimationEnd={handleCardAnimationEnd}
-            />
+          <div className="queue-head">
+            <p className="meta">
+              {formatLeft(remaining)}
+              {!isDemo ? (
+                <>
+                  {' · '}
+                  <button className="act" type="button" onClick={() => setWriting(true)}>
+                    Trim a draft
+                  </button>
+                </>
+              ) : null}
+            </p>
+            <div className="queue-progress" aria-hidden="true">
+              <span style={{ width: `${remainingShare}%` }} />
+            </div>
+          </div>
+          <div className="queue-body">
+            <span className={keptVisual ? 'keep-note on' : 'keep-note'} aria-hidden="true">
+              kept
+            </span>
+            <div className={collapsed ? 'slot collapsed' : 'slot'}>
+              <div className={stackClass}>
+                <span className="stack-edge edge-one" aria-hidden="true" />
+                <span className="stack-edge edge-two" aria-hidden="true" />
+                <QueueCardView
+                  ref={keepButtonRef}
+                  card={current}
+                  struck={struck}
+                  kept={keptVisual}
+                  gone={gone}
+                  busy={phase !== 'idle'}
+                  error={cutError}
+                  onKeep={handleKeep}
+                  onCut={handleCut}
+                  onAnimationEnd={handleCardAnimationEnd}
+                />
+              </div>
+            </div>
           </div>
         </div>
       </main>

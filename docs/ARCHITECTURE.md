@@ -17,11 +17,11 @@ Browser (React + Vite)                    [built]
 /api  (one Express app)                   [built]
    ├─ /api/auth/*     OAuth 2.0 + PKCE, session cookie   [built]
    ├─ /api/buffer/*   account, channels, queue reads     [built]
-   └─ /api/ai/*       AI calls, provider key server-side [planned]
+   └─ /api/ai/*       AI calls, provider key server-side [built]
    │
    ├──► Buffer GraphQL  https://api.buffer.com           [built]
    ├──► Buffer OAuth    https://auth.buffer.com/auth, /token  [built]
-   └──► AI provider                                      [planned]
+   └──► AI provider                                      [built]
 ```
 
 Two hosting modes, one server codebase:
@@ -35,33 +35,36 @@ Two hosting modes, one server codebase:
 enough/
   api/index.js                  Vercel entry: re-exports server/app.js; never listens
   server/
-    app.js                      Express app: session middleware, seven routes, error handler
+    app.js                      Express app: session middleware, routes, error handler
+    limits.js                   per-network length and media rules, checked before create
     index.js                    local listener only (Node --watch)
     config.js                   env loading, redirect URI, host guard, scopes, session secret
     session.js                  iron-session wrapper
     buffer.js                   PKCE, token exchange/refresh, GraphQL client, queries
+    ai.js                       provider seam: Gemini, OpenAI or Anthropic by key presence
+    limits.js                   per-network length and media rules, checked before create
   src/
     main.tsx                    React entry
     App.tsx                     session load, dev demo bypass, Connect vs Queue
     types.ts                    client/server contract
-    lib/api.ts                  typed fetch helpers (session, channels, queue, cut, logout)
-    lib/format.ts               date, subline, counts
+    lib/api.ts                  typed fetch helpers (session, channels, queue, cut, trim, create)
+    lib/diff.ts                 word-level LCS diff, computed in the browser
+    lib/format.ts               date, subline, counts, network labels
     pages/Connect.tsx           connect screen
     pages/Queue.tsx             review session and motion state machine
     pages/End.tsx               end screen
-    pages/Essence.tsx           placeholder only, not imported by App
-    components/QueueCard.tsx    one card, Keep/Cut
+    pages/Essence.tsx           trim, diff, optional image URL, send to Buffer
+    components/QueueCard.tsx    one card, Keep/Cut, thumbnail, network
+    components/WordDiff.tsx     pencil-mark rendering for removed words
     hooks/useReducedMotion.ts   matchMedia listener
     fixtures/cards.ts           dev-only demo cards
-    styles/app.css              Tailwind directives + small app rules
+    styles/app.css              Tailwind directives + app rules
   enough.css                    design tokens and motion (pre-existing)
   tailwind.config.js            tokens mapped to CSS vars (pre-existing)
   docs/                         PRD, architecture, deploy notes
   vercel.json                   build/output + /api rewrite
   .env.example                  placeholders only
 ```
-
-There is no `server/ai.js`, no `src/lib/diff.ts`, and no Card/ActionBar/WordDiff/EnoughMark component tree yet.
 
 **Decision:** one Express function at `/api`, not eight separate serverless files. The OAuth/session code is shared, and there are fewer cold starts. The README maps features to files instead of relying on a one-function-per-endpoint tree.
 
@@ -87,7 +90,7 @@ Buffer requires HTTPS even on localhost and compares redirect URIs character for
 
 ## 4. Authentication
 
-### Flow **[built, not browser-tested]**
+### Flow **[built, browser-tested]**
 
 1. `GET /api/auth/login`
    - Check the request `Host` against the redirect URI host. On mismatch or a deployment with no callback, redirect to `/?error=<explanation>` — login never starts from the wrong origin.
@@ -123,7 +126,7 @@ Buffer requires HTTPS even on localhost and compares redirect URIs character for
 - On a GraphQL 401: clear tokens, save, return 401 "Buffer rejected the access token — reconnect".
 - On 429: read `Retry-After`; retry once only when the wait is short (≤5 seconds). Otherwise return 429 with the wait. Rate limits are per app client, so all users share the quota.
 
-### Redirect URI **[built config, not registered]**
+### Redirect URI **[built; local registered, production pending]**
 
 - Development default: `https://localhost:5173/api/auth/callback`.
 - `REDIRECT_URI` overrides it. Values are trimmed, a non-HTTPS URL warns, and an unparseable value falls back to the default with a warning.
@@ -253,8 +256,9 @@ mutation CreatePost($input: CreatePostInput!) {
 - `assets` is `[]` for a text-only post, or `[{ image: { url } }]` when an optional public image URL is supplied. Buffer fetches the URL; the server validates only the shape (`http`/`https`, under 2,000 characters).
 - `schedulingType` starts as `automatic`. Instagram personal profiles refuse that and ask for `notification`, so the route retries once with `notification` when Buffer's typed error says so. The response returns the mode actually used, and the confirmation says Buffer will remind the person to post.
 - `saveToDraft: true` requires a channel and makes the status `draft`.
-- Per-network metadata is required for some services (Instagram `{type:"post", shouldShareToFeed:true}`, Facebook `{type:"post"}`, Google Business `{type:"whats_new"}`). Reuse the starter's `buildPostInput` mapping. YouTube needs a title.
-- `mode`: `addToQueue` for the default; `customScheduled` + `dueAt` if a time is chosen.
+- Per-network metadata is required for some services (Instagram `{type:"post", shouldShareToFeed:true}`, Facebook `{type:"post"}`, Google Business `{type:"whats_new"}`). Reuse the starter's `buildPostInput` mapping.
+- `mode`: `addToQueue` only in v1. There is no custom time picker, so `customScheduled` and `dueAt` are not used.
+- YouTube needs a title and video, so creation is blocked before Buffer is called.
 
 ### Idea **[planned]**
 
@@ -283,12 +287,13 @@ All JSON responses use `{ "error": "sentence-case message" }` with the matching 
 | GET | `/api/auth/callback` | `code`, `state`, `error?` | 302 to `/` or `/?error=`; 403 on a bad callback | **built** |
 | POST | `/api/auth/logout` | — | `{ connected: false }` | **built** |
 | GET | `/api/buffer/session` | — | `{ connected, account?, redirectUri, scope? }` | **built** |
-| GET | `/api/buffer/channels` | `organizationId` (required) | `{ channels }` | **built** |
+| GET | `/api/buffer/channels` | `organizationId` (required) | `{ channels }`, each with `limit` | **built** |
 | GET | `/api/buffer/queue` | `organizationId` (required), `first?` | `{ posts: QueueCard[] }` | **built** |
 | POST | `/api/buffer/cut` | `{ postId }` | `{ ok: true }` | **built** |
-| POST | `/api/buffer/create` | `{ kind, text, channelId?, mode?, dueAt?, title? }` | `{ post?, idea? }` | planned |
-| POST | `/api/ai/essence` | `{ text }` | `{ trimmed }` | planned |
-| POST | `/api/ai/audit` | `{ posts: [{id,text,channel,dueAt,status}] }` | `{ duplicates, stale, overPosting }` | planned |
+| POST | `/api/buffer/create` | `{ kind, text, channelId, organizationId, imageUrl? }` | `{ post }` | **built** |
+| POST | `/api/ai/essence` | `{ text }` | `{ trimmed }` | **built** |
+
+There is no queue-audit endpoint and no idea endpoint in v1.
 
 `/api/buffer/session` returns `connected: false` (not an error) when there are no tokens or Buffer rejects them; this is the reconnect path.
 
@@ -305,6 +310,7 @@ type QueueCard = {
   service: string
   dueAt: string | null
   status: PostStatus
+  asset?: { thumbnail: string; source: string; type: string } | null
 }
 ```
 
@@ -312,40 +318,34 @@ type QueueCard = {
 
 ## 7. Client architecture
 
-- No router **[built]**. `App.tsx` loads the session once, then renders `Connect` or `Queue`. `Queue` owns the review and renders `End` when the cards run out. `Essence` is a placeholder and is not imported.
+- No router **[built]**. `App.tsx` loads the session once, then renders `Connect` or `Queue`. `Queue` owns the review and renders `End` when the cards run out. `Queue` also holds a `writing` flag: it swaps its screen for `EssencePage` without unmounting, so review progress survives a detour into the editor.
 - `Queue.tsx` holds the whole review session in local state: load status, the capped card list, index, done, kept/cut totals, the motion phase and visual flags, and the live-region message. There is no store and no `useQueue` hook.
-- The first organization on the account is selected automatically (`session.account.organizations[0]`). There is no organization or channel picker UI; `getChannels()` exists in `lib/api.ts` but is unused.
+- The first organization on the account is selected automatically (`session.account.organizations[0]`). There is no organization picker. `getChannels()` feeds the Essence channel select and carries each channel's network limit.
 - Read state is fetched, not duplicated. The queue is a snapshot taken on load; a refresh re-reads Buffer.
 - Keep makes no API call. Cut calls `POST /api/buffer/cut` and removes the card from local state only after the server confirms. A failed Cut keeps the card and shows the error in its reason line; the queue is untouched.
 - Errors render in place with a Try again action, not as alerts. A failed queue load also offers Reconnect.
 - `?demo=1` is a development-only fixture path. In `App.tsx`, `import.meta.env.DEV && ?demo=1` skips the session fetch and renders `QueuePage` with a fake session; `Queue.tsx` then loads `src/fixtures/cards.ts` instead of calling the API. `import.meta.env.DEV` is false in production builds, so the path cannot ship as a fake success.
 - Reduced motion is read with `useReducedMotion()` (a `matchMedia` listener), not only by CSS.
 
-## 8. AI layer **[planned]**
+## 8. AI layer **[built]**
 
-No AI code exists yet: there is no `server/ai.js`, no AI endpoint, and no provider key. The design below is the agreed shape for when it is built.
+`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.5-flash-lite`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
 
 ### Essence
 
-- Server builds a strict prompt: "Return only the trimmed text. Keep one idea. Do not add facts, links, hashtags, emoji or calls to action. Preserve voice, @mentions and URLs. Do not explain."
-- Send `{ text }` only. Cap input (e.g. 4,000 characters) and output.
-- Validate: non-empty, no longer than the input, not an obvious refusal. On failure, return 502 with "The trim didn't come back. Your draft is unchanged."
-- The **client** computes the word-level diff between original and trimmed text. This guarantees the pencil marks correspond to real deletions. No index-based model output.
+- `POST /api/ai/essence` takes `{ text }` only. Input is trimmed and capped at 4,000 characters.
+- The prompt asks for the trimmed text only: keep the one idea, delete filler and repetition, add nothing, preserve voice, @mentions and URLs.
+- The response is sanitized server-side: one surrounding code fence or quote pair is removed; empty output, output longer than the input, and obvious refusals are rejected. Failure → `502` "The trim didn't come back. Your draft is unchanged."
+- The **client** computes the word-level diff (`src/lib/diff.ts`, LCS over word tokens) between the original and the trimmed text. This guarantees a pencil mark can only land on a word that is actually gone. The model never returns indices.
+- The result stays editable. Editing the draft retires the previous result, so no mark can describe stale text.
 
-### Audit
+### Create constraints
 
-- One call per queue load, with at most 20 posts.
-- Input fields only: `id`, `text`, `channel`, `dueAt`, `status`.
-- Ask for JSON, then validate every id against the fetched set. Drop unknown ids silently.
-- Deterministic fallback runs regardless, and is the sole source if the AI call fails:
-  - stale: `dueAt < now` or `status === 'error'`
-  - over-posting: count per channel in a rolling 7-day window
-  - near-duplicate: normalize (lowercase, strip punctuation/URLs), token overlap above a threshold
-- The model's output can reorder and explain, but cannot invent an item or trigger a delete.
+- `POST /api/buffer/create` validates the channel, then `server/limits.js` checks the network's character limit and media requirement before Buffer is called. Its refusals are turned into a sentence that names the network and the limit.
+- `assets` is `[]`, or `[{ image: { url } }]` when the optional image URL is supplied. Instagram requires one; TikTok, YouTube and Pinterest need video or a board, so this version blocks them with a reason.
+- `schedulingType` starts as `automatic`; Instagram personal profiles require `notification`, so the route retries once when Buffer says so. The response records the mode used, and the confirmation says Buffer will remind the person to post.
 
-### Provider
-
-**[open]** The AI provider is not chosen. Keep a small `complete(prompt)` seam so the provider is one file. The key is server-side, never `VITE_`-prefixed.
+There is no queue audit. Deterministic reasons (error status, a past `dueAt`) are the whole reason set.
 
 ## 9. Motion implementation
 
@@ -362,7 +362,13 @@ If the delete fails, the timers are cleared, `.struck.on` is removed, the phase 
 
 ### Keep **[built]**
 
-`idle → leaving` directly: add `.is-kept` (slide right, **180ms**), then collapse the slot (**280ms**), then advance. Reduced motion waits 120ms for the fade, then collapses immediately. Keep makes no API call and counts toward "kept".
+`idle → leaving` directly: add `.is-kept`; the sheet settles down (`translateY(4px)`, **220ms**) while a graphite "kept" note fades in the left page margin and out by 460ms, then collapse the slot (**280ms**), then advance. The two paper edges behind the card fade when the decision starts. Reduced motion waits 120ms for an opacity-only fade, then collapses immediately. Keep makes no API call and counts toward "kept".
+
+### Queue composition **[built]**
+
+- The card is `.sheet`; while more than one card remains, `.sheet-stack.stacked` shows two 1px outlined sheets offset 6px and 14px below it. They are transparent outlines, not box shadows, so they read as paper edges. When the last card arrives, the edges fade and the 16px stack padding closes over 220ms.
+- `.queue-progress` is a 120px hairline; the graphite segment is `remaining / total` wide and transitions in 280ms. It is `aria-hidden`; the "N left" text remains the accessible count.
+- The "kept" note is hidden below 900px, where there is no page margin; the settle motion carries the beat there.
 
 ### Guards and accessibility **[built]**
 
@@ -374,12 +380,14 @@ If the delete fails, the timers are cleared, `.struck.on` is removed, the phase 
 - The card carries `aria-busy` while a phase runs, and both actions carry `aria-disabled` so they stay focusable but ignore input mid-phase.
 - `useReducedMotion()` feeds the JS timers; `enough.css` also reduces all animations to 120ms and transitions to 1ms.
 
-### Essence **[planned]**
+### Essence **[built]**
 
-- Render each word as `<span class="word" style={{'--i': n}}>`.
-- Removed words get `.cut` (pencil line drawn) and then `.gone`; the CSS delays the collapse by `220ms + i*25ms`.
-- The visible word count is derived from the trimmed text, not a separate counter; update it at the end of the stagger unless there is time for a tween. **[open]**
-- The `.word` CSS exists and is unused until the editor ships.
+1. `trimEssence` resolves → the client computes `diffText(draft, trimmed)` and renders the diff paragraph with `word cut` spans, no `.on`/`.gone`.
+2. On the next animation frame, `collapsed` flips: spans become `word cut on gone`. The CSS draws the pencil for **220ms**, then collapses each mark after `220ms + index*25ms` (320ms max-width, 240ms opacity).
+3. The swap to the editable result is timed from the cut count: `220 + (cuts-1)*25 + 320 + 60`, capped at 2,200ms. Reduced motion flips immediately and swaps in 0ms; the global media query removes the transitions.
+4. Editing the draft cancels the frame/timer and clears the result, so marks never describe stale text.
+
+The word count stays visible during the swap ("N words to M."). The result textarea is read-only only while sending.
 
 ### End **[built]**
 
@@ -419,34 +427,39 @@ Build checks:
 1. `npm run typecheck` (`tsc -b`).
 2. `npm run build` (`tsc -b && vite build`).
 
-Manual checks, with what is possible today:
+Manual checks, run against a real Buffer account:
 
-1. Local connect → consent → back → queue loads. **[blocked until the localhost redirect URI is registered and `account:read`, `posts:read`, `posts:write` and `offline_access` are enabled]**
-2. Queue returns real posts, sorted by `dueAt`, at most 20 cards. **[needs a session]**
-3. Keep makes no API call and advances. **[built]**
-4. Cut deletes the post in Buffer; refresh Buffer to confirm it is gone. **[built; not exercised end to end]**
-5. A failed Cut keeps the card and shows the error in place. **[built; exercise by cutting a post removed in another tab]**
-6. End screen shows "Enough." with kept/cut totals and receives focus. **[built]**
-7. `?demo=1` in `npm run dev` shows the fixture cards with no session. **[built]**
-8. Reduced motion: no strike wait or slide, state still updates. **[built]**
-9. Sign out: the endpoint clears the cookie, but no UI button calls it. **[API only]**
-10. Production: connect, read the queue, cut a test post, sign out, reconnect. **[not run; not deployed]**
+1. Local connect → consent → back → queue loads. **Done.**
+2. Queue returns real posts, sorted by `dueAt`, at most 20 cards, with media and network shown. **Done.**
+3. Keep makes no API call and advances. **Done.**
+4. Cut deletes the post in Buffer. **Done.**
+5. A failed Cut keeps the card and shows the error in place. **Built; not deliberately exercised.**
+6. End screen shows "Enough." with kept/cut totals and receives focus. **Done.**
+7. `?demo=1` shows the fixture cards with no session. **Done.**
+8. Reduce motion: no strike wait or slide, state still updates. **Built; checked in DevTools.**
+9. Essence trim → diff → editable result. **Done.**
+10. Send as a draft. **Done.**
+11. Send as a queued post. **Done, including Instagram personal profile (notification scheduling + image URL).**
+12. Network guard: over-limit and unsupported channels refuse before Buffer. **Built; unit-checked, not exercised in the browser.**
+13. Sign out: the endpoint clears the cookie, but no UI button calls it. **API only.**
+14. Production: connect, read the queue, cut a test post, send a draft, reconnect. **Not run; not deployed.**
 
 ## 13. Known limitations
 
-- **No AI.** No Essence, no queue audit, no duplicate or over-posting reasons. Only two deterministic reasons exist, both client-side: `error` status and a `dueAt` in the past.
 - **No Merge**, as agreed for v1.
-- **No Essence editor.** `pages/Essence.tsx` is a placeholder, not routed.
-- **No organization or channel picker.** The first organization is selected automatically; the channels endpoint is unused by the UI.
+- **No queue audit and no AI reasons.** The two deterministic reasons are `error` status and a `dueAt` in the past.
+- **No ideas.** They are neither read nor created.
+- **No organization picker.** The first organization is selected automatically.
 - **No sign-out in the UI**, although `/api/auth/logout` works.
-- Ideas are create-only; they cannot appear in Keep/Cut.
 - Cookie sessions cannot coordinate concurrent refreshes across tabs. Acceptable for v1; documented.
 - Queue is a load-time snapshot and only the first page (up to 50, reviewed as 20). Another device's changes appear on refresh.
 - **Cut has no undo.** It deletes immediately once Buffer confirms; the demo should use a test account.
 - Media-only posts are kept and labelled "Image post" or "Video post", with a thumbnail.
+- Character limits are known for the common networks; an unknown service falls back to 4,000 characters. Buffer remains the final judge.
+- TikTok, YouTube and Pinterest creation is blocked with a reason: this version sends text and images, not video or boards.
+- Instagram personal profiles are scheduled as reminders, not automatic publishing.
 - Vercel's function rewrite path semantics are unconfirmed on a live deployment.
-- The localhost and production redirect URIs are not registered yet, so no browser OAuth round trip has been completed.
-- Production domain is unknown.
+- The production redirect URI is not registered yet and the production domain is unknown. Local OAuth works with `https://localhost:5173/api/auth/callback`.
 
 ## 14. Deployment runbook
 

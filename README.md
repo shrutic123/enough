@@ -113,7 +113,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 One 640px column, left-aligned. Instrument Sans everywhere; Instrument Serif italic only for "Enough." The blue pencil `#2F4BFF` is the only accent and only ever marks a cut or holds focus. Actions are text with key hints, not buttons in boxes.
 
-Motion answers an action: the pencil draws (220ms), the card dissolves (320ms), the gap collapses (280ms). The one unprompted moment is the end screen, where "Enough." settles once. With `prefers-reduced-motion`, those become 120ms fades with no transforms and no stagger.
+Motion answers an action: the pencil draws (220ms), the card dissolves (320ms), the gap collapses (280ms). Keep has its own quieter beat: the sheet settles and a graphite "kept" note appears in the margin. The one unprompted moment is the end screen, where "Enough." settles once. With `prefers-reduced-motion`, those become 120ms fades with no transforms and no stagger.
 
 Dropped on purpose: Merge, because it is two calls with a partial-failure state; an AI queue audit, because deterministic reasons were enough and the model was not allowed to make the decision; idea creation, because ideas cannot be updated or deleted and cannot join Keep/Cut.
 
@@ -125,6 +125,7 @@ Dropped on purpose: Merge, because it is two calls with a partial-failure state;
 - Media-only posts show as "Image post" or "Video post" with a thumbnail. Only a post with neither text nor media is hidden.
 - Ideas are not shown or created.
 - The queue is a snapshot taken on load. Another device's changes appear on refresh.
+- Channel limits are checked before sending for X, Bluesky, Threads, Mastodon, LinkedIn, Instagram, Facebook and Google Business. Buffer is still the final judge. TikTok, YouTube and Pinterest creation is blocked with a reason, because this version sends text and images only.
 - If Buffer has no posting slots on a channel, "Add to queue" is refused by Buffer; save as a draft instead.
 
 ## Credits

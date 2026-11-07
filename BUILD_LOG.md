@@ -7,10 +7,10 @@ Short, dated entries. This is the evidence of what was built inside the contest 
 - Stuck on: The Buffer app client still needs the localhost redirect URI and the `account:read`, `posts:read`, `posts:write`, `offline_access` scopes before the first browser login. The Vercel rewrite is not live-tested.
 - Next: Register `https://localhost:5173/api/auth/callback`, enable those scopes, complete the OAuth round trip, and cut one test post end to end.
 
-## Day 2 - [date]
-- Done:
-- Stuck on:
-- Next:
+## Day 2 - Nov 7
+- Done: Finished the browser OAuth round trip against real Buffer and reviewed a real queue with K/C. Built the Essence editor end to end: provider seam (Gemini/OpenAI/Anthropic), `/api/ai/essence`, browser-computed word diff, and `createPost` as a queued post or a draft. Fixed two live Buffer constraints: Instagram personal profiles need notification scheduling, and Instagram requires media, so the editor now accepts an optional public image URL. Added media thumbnails, media-only cards, and the network name to the queue card. Added a per-network limit guard so over-limit and video/board-only channels fail with a sentence instead of Buffer's generic error. Ran the design pass: the card is a sheet on a two-edge stack, the count has a shrinking hairline, Keep settles the sheet and leaves a graphite "kept" note in the margin, and the connect screen is one promise and one action. Reconciled `docs/PRD.md` and `docs/ARCHITECTURE.md` with the built slice.
+- Stuck on: Production deployment and the production redirect URI are still open. The network guard and the new design pass are checked in the browser via the demo queue, not against a live send.
+- Next: Deploy to Vercel, register the production callback, smoke test, then record the demo video.
 
 ## Day 3 - [date]
 - Done:

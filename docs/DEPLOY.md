@@ -35,6 +35,10 @@ In Buffer, open **Settings → API** and create (or edit) the app client.
    | `BUFFER_CLIENT_SECRET` | The app client secret (omit for a public client). |
    | `REDIRECT_URI` | `https://<your-domain>/api/auth/callback` |
    | `SESSION_SECRET` | Output of `openssl rand -hex 32` (32+ characters). |
+   | `GEMINI_API_KEY` | One AI provider key. `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` also work, in that fallback order. |
+   | `AI_MODEL` | Optional. Overrides the provider's default model. |
+
+   Without an AI key the queue still works; only Trim returns "Trimming isn't available right now."
 
    `REDIRECT_URI` must be the exact production callback, including the
    `/api/auth/callback` path. If you leave it unset, the server derives it from
@@ -63,7 +67,10 @@ subdomain will fail the token exchange.
 3. Reload the page; the connection should survive (the sealed session cookie).
 4. Cut one **test** post and confirm it is gone in Buffer. A failed Cut keeps
    the card and shows the error in place.
-5. `curl -s https://<your-domain>/api/buffer/session` with the session cookie
+5. Open **Trim a draft**, paste a short draft, press **Trim**, and confirm the
+   diff draws and the result can be saved as a draft. This checks the AI key and
+   `createPost` together.
+6. `curl -s https://<your-domain>/api/buffer/session` with the session cookie
    should show `connected: true` and the same `redirectUri` registered above.
 
 If the callback fails, check the error query string on `/?error=...` and the

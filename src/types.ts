@@ -1,7 +1,22 @@
 export type Organization = { id: string; name: string }
 export type Account = { id: string; email: string; name?: string; organizations: Organization[] }
 export type SessionResponse = { connected: boolean; account?: Account; redirectUri?: string }
-export type Channel = { id: string; name: string; displayName?: string; service: string; isDisconnected?: boolean; isQueuePaused?: boolean }
+export type ChannelLimit = {
+  label: string
+  max: number
+  needsImage: boolean
+  supported: boolean
+  note: string | null
+}
+export type Channel = {
+  id: string
+  name: string
+  displayName?: string
+  service: string
+  isDisconnected?: boolean
+  isQueuePaused?: boolean
+  limit?: ChannelLimit
+}
 export type ChannelsResponse = { channels: Channel[] }
 export type PostStatus = 'draft' | 'error' | 'needs_approval' | 'scheduled' | 'sending' | 'sent'
 export type CardAsset = { thumbnail: string; source: string; type: string }

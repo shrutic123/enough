@@ -38,7 +38,7 @@ An editor's desk. The only accent is a proofreader's blue pencil, and it is used
 
 The product is deliberately small. It does two things well rather than becoming a Buffer client.
 
-**What changed in this slice (Nov 6):** the first release is **Keep/Cut only**. It reads the real queue, shows one card at a time, and Cut deletes the post in Buffer. Merge remains a stretch goal. Ideas are create-only and are not part of this release.
+**What changed in this slice (Nov 7):** the release is **Keep/Cut plus the Essence editor**. It reads the real queue, shows one card at a time, and Cut deletes the post in Buffer. The editor trims a draft, shows the word-level diff, and sends the result as a queued post or a draft. Merge and ideas remain out of v1.
 
 ## 4. Goals and non-goals
 
@@ -66,7 +66,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 | Constraint | Consequence |
 |---|---|
-| `createIdea` exists; no `updateIdea` or `deleteIdea` | Ideas cannot be kept/merged/cut. The declutter flow works on posts only. Ideas are a destination in the Essence editor. |
+| `createIdea` exists; no `updateIdea` or `deleteIdea` | Ideas cannot be kept/merged/cut. The declutter flow works on posts only. Ideas are not part of v1. |
 | `deletePost(input: { id })` exists | Cut is a real delete. This is destructive and must be labelled. |
 | `editPost` exists with `text` and `dueAt` | Merge is technically possible as edit + delete, but it is two calls with a partial-failure state. Deferred. |
 | `createPost` with `saveToDraft: true` requires `channelId` | "Save as draft" needs a channel picker. Channel-less drafts use the experimental content-items API and are out of scope. |
@@ -89,7 +89,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 **Scopes**
 
-`account:read`, `posts:read`, `posts:write`, `ideas:read`, `ideas:write`, `offline_access`. Request only the scopes enabled on the app client. **Current build requests exactly `account:read posts:read posts:write offline_access`**, so Cut can delete. The idea scopes are added when the Essence editor ships; every added scope needs a re-consent.
+`account:read`, `posts:read`, `posts:write`, `offline_access`. Request only the scopes enabled on the app client. The build requests exactly these, so Cut can delete and the editor can create. Ideas are out of v1, so no idea scope is requested.
 
 **Acceptance**
 
@@ -143,19 +143,20 @@ When the review set is empty, show **"Enough."** in Instrument Serif italic. Sub
 
 ### 6.3 Essence editor
 
-**Build status:** not started. `src/pages/Essence.tsx` is a placeholder page only.
+**Build status:** built and exercised against Buffer: trim, diff, draft, queued post, Instagram image URL and notification scheduling.
 
 **Flow**
 
-1. Paste a draft, or arrive with text from a queue card ("Trim this instead").
-2. Choose a destination:
-   - **Scheduled post** — channel required; `addToQueue` or a custom time.
+1. Paste a draft.
+2. Choose a channel and a destination:
+   - **Scheduled post** — channel required; `addToQueue`.
    - **Draft** — channel required; `saveToDraft: true`.
-   - **Idea** — no channel; `createIdea`.
 3. Press **Trim**.
 4. The server returns the trimmed text. The client computes a word-level diff, marks each removed word with the blue pencil, then collapses the removed words with a 25ms stagger while the word count ticks down.
 5. The user can edit the result before sending.
 6. **Send to Buffer** creates the chosen item and confirms what was created.
+
+Instagram requires an image, so the editor asks for an optional public image URL when that channel is selected. Network character limits are checked before sending; TikTok, YouTube and Pinterest are blocked with a reason because this version sends text and images only.
 
 **Rules**
 
@@ -182,9 +183,9 @@ When the review set is empty, show **"Enough."** in Instrument Serif italic. Sub
 
 ## 7. AI behaviour
 
-**Build status:** not started. No AI provider is wired.
+**Build status:** built for the Essence trim. The queue audit was dropped in v1; reasons are deterministic.
 
-### Queue audit
+### Queue audit (not in v1)
 
 - Send only: post id, text, channel name, due date, status.
 - Ask for a compact JSON result: duplicate groups, stale ids with a short reason, over-posting channel ids with counts.
@@ -261,12 +262,13 @@ For the build:
 
 | Date | Outcome |
 |---|---|
-| Nov 6 | Scaffold, OAuth/session/queue API, queue card + Keep/Cut motion, real Cut via `deletePost`, end screen, deploy config (OAuth not browser-tested) |
-| Nov 7–8 | Complete the browser OAuth round trip, keep/cut polish, Essence groundwork |
-| Nov 9 | Essence editor, diff, send to Buffer; hard decision point on auth if blocked |
-| Nov 10 | Queue audit, reasons, deterministic fallback, deploy |
-| Nov 11 | README, demo script, screenshot/GIF |
-| Nov 12 | Submit (app, write-up, video link) |
+| Nov 6 | Scaffold, OAuth/session/queue API, queue card + Keep/Cut motion, real Cut via `deletePost`, end screen, deploy config |
+| Nov 7 | Real browser OAuth, queue read, Essence editor (trim, diff, send), Instagram image and notification scheduling, network guard, docs reconciled |
+| Nov 8 | Deploy to Vercel, register the production redirect URI, smoke test |
+| Nov 9 | Design pass, demo script |
+| Nov 10 | Record the demo, add screenshots and links |
+| Nov 11 | Final README and write-up |
+| Nov 12 | Submit |
 | Nov 13 | Cushion only |
 
 ## 13. Risks
@@ -282,37 +284,39 @@ For the build:
 
 ## 14. Build status
 
-Update at the end of each session. **Last updated: Nov 6, 2026.**
+**Last updated: Nov 7, 2026.**
 
 | Area | Status |
 |---|---|
 | Repo + design tokens | Done before the window work (Nov 5) |
 | Client scaffold | Done — Vite + React + TypeScript + Tailwind 3, local HTTPS on 5173 |
-| OAuth + session | Built server-side; not browser-tested (redirect URI not yet registered) |
-| Channels + queue read | Built server-side; the queue screen fetches the real queue |
-| Card + Keep/Cut | Built — card, strike/dissolve/collapse, keyboard, focus, live region, end screen; Cut calls `deletePost` and keeps the card on failure |
-| Essence editor | Not started (placeholder page only) |
-| Queue audit | Not started |
-| Deploy | Config prepared (`vercel.json`, `docs/DEPLOY.md`); not deployed or smoke-tested |
-| README + video + submission | Not started |
+| OAuth + session | Built and browser-tested; local redirect URI registered |
+| Channels + queue read | Built — real queue, media thumbnail and network name on each card |
+| Card + Keep/Cut | Built — strike/dissolve/collapse, keyboard, focus, live region, end screen, sheet stack, progress hairline, keep note; Cut calls `deletePost` and keeps the card on failure |
+| Essence editor | Built — provider seam, trim, word-level diff, editable result, draft and queued post |
+| Network guard | Built — per-network character limits, required image for Instagram, notification scheduling for personal profiles, video/board channels blocked with a reason |
+| Queue audit | Out of v1 |
+| Deploy | Config prepared (`vercel.json`, `docs/DEPLOY.md`); not deployed |
+| README + video + submission | README current; video and submission pending |
 
-### Discrepancies between code and PRD
+### Resolved decisions
 
-These are real disagreements to settle, not silent edits to the product intent.
+These were open disagreements; they are settled for v1.
 
-| # | PRD says | Code today | Needs a decision |
-|---|---|---|---|
-| 1 | Review only flagged items; go straight to the end screen if nothing is flagged. | Reviews every post, up to 20, in due-date order. No audit. | Keep all-posts review for v1 and rewrite this section, or build the audit first. |
-| 2 | Reasons include near-duplicates and over-posting. | Only `error` status ("This one didn't send.") and a past due date ("This was meant to go out already."). | These two are deterministic; the rest need the audit. |
-| 3 | Input is scheduled posts and drafts. | Requests `scheduled`, `draft`, `error`, `needs_approval`. | Confirm the wider filter is intended; the PRD already treats `error` as stale. |
-| 4 | The queue is for the selected organization; if there are no channels, show a calm empty state. | The first organization is selected automatically. No organization or channel picker UI, the channels endpoint is not called by the UI, and a channel-less account falls through to the generic empty-queue message. | Confirm single-organization v1; decide whether a zero-channel empty state is needed. |
-| 5 | Scopes include `ideas:read` and `ideas:write`. | Requests `account:read posts:read posts:write offline_access`. | Add the idea scopes when the Essence editor ships; each addition needs a re-consent. |
-| 6 | End screen offers "Review again" when unflagged posts remain; sign out clears the session. | End offers "Back to Buffer" and "Start over" (a reload). No sign-out button, though `/api/auth/logout` exists. | Decide whether "Review again" and sign-out are in v1. |
+| # | Decision |
+|---|---|
+| 1 | Review every post, up to 20, in due-date order. No AI audit. |
+| 2 | Reasons are deterministic: an `error` status, a past `dueAt`. No model decides. |
+| 3 | The review set is `scheduled`, `draft`, `error`, `needs_approval`. |
+| 4 | One organization, chosen automatically. No organization picker. |
+| 5 | Scopes are final: `account:read`, `posts:read`, `posts:write`, `offline_access`. |
+| 6 | End screen offers "Back to Buffer", "Trim a draft", "Start over". No sign-out in v1. |
+| 7 | Merge is out. Ideas are out. |
+| 8 | One queue across networks. No per-network queues and no calendar/timeline view. |
 
 ## 15. Open questions
 
-1. **Merge:** leave it out of v1 and add only if session 4 has room?
-2. **AI provider:** which key does the builder already have? (Gemini keeps them on GCP; OpenAI or Anthropic are fine.)
-3. **Default send mode:** `addToQueue` or a custom time? Current lean: add to queue, with a date shown before sending.
-4. **Review set:** the current code reviews every post; the PRD leans flagged-only. Decide before the audit ships: review all, or flagged-only then "Enough."
-5. **Undo:** none in v1. Confirm that deleting is acceptable, given the demo uses a test account.
+1. **Production domain:** the Vercel URL is unknown; the production redirect URI is not registered.
+2. **Demo video:** record after the design pass and deployment.
+3. **Post-v1, only if time:** a "never cut these" list, or a density reason ("Third post that day"). Not before deploy and video.
+4. **Undo:** stays out. The demo uses a test account.

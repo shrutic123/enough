@@ -189,3 +189,213 @@ a.act {
     height: 72px;
   }
 }
+
+/* ---------- Queue: the card as a sheet on a stack ---------- */
+
+/* Two faint outlined sheets sit behind the card. A transparent fill keeps the
+   edges reading as paper, not as a drop shadow. */
+.card.sheet {
+  padding: 44px 48px;
+}
+
+.sheet-stack {
+  position: relative;
+  padding-bottom: 0;
+  transition: padding-bottom 220ms var(--ease);
+}
+
+.sheet-stack.stacked {
+  padding-bottom: 16px;
+}
+
+.stack-edge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+  border-radius: var(--radius);
+  opacity: 0;
+  transition: opacity 220ms var(--ease);
+  pointer-events: none;
+}
+
+.stack-edge.edge-one {
+  bottom: 10px;
+}
+
+.stack-edge.edge-two {
+  bottom: 2px;
+  border-color: color-mix(in srgb, var(--line) 36%, transparent);
+}
+
+.sheet-stack.stacked .stack-edge {
+  opacity: 1;
+}
+
+.sheet-stack.stacked.leaving .stack-edge {
+  opacity: 0;
+}
+
+/* The post carries the card; channel and date read as its caption. */
+.card.sheet .card-text {
+  font-size: clamp(1.65rem, 3.4vw, 2.3rem);
+  line-height: 1.24;
+  letter-spacing: -0.025em;
+  max-width: 33ch;
+}
+
+.card.sheet .card-sub {
+  margin-top: 22px;
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.card.sheet .card-top {
+  gap: 28px;
+}
+
+.card.sheet .card-thumb {
+  margin-top: 2px;
+}
+
+.card.sheet .actions {
+  margin-top: 28px;
+}
+
+.card.sheet .card-why {
+  margin-top: 14px;
+  font-size: 0.86rem;
+}
+
+@media (max-width: 520px) {
+  .card.sheet {
+    padding: 34px 28px;
+  }
+
+  .card.sheet .card-text {
+    font-size: clamp(1.4rem, 6.2vw, 1.7rem);
+  }
+}
+
+/* ---------- Queue: one quiet progress cue ---------- */
+
+.queue-head {
+  margin-bottom: 18px;
+}
+
+.queue-head .meta {
+  margin: 0 0 0 4px;
+}
+
+/* The header link sits on the count line, so it needs no button padding. */
+.queue-head .act {
+  padding: 0;
+  font-size: inherit;
+  font-weight: 500;
+}
+
+.queue-progress {
+  width: 120px;
+  height: 1px;
+  margin: 10px 0 0 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.queue-progress > span {
+  display: block;
+  height: 100%;
+  background: color-mix(in srgb, var(--graphite) 78%, transparent);
+  transition: width 280ms var(--ease);
+}
+
+/* ---------- Queue: keeping leaves a graphite note in the margin ---------- */
+
+.queue-body {
+  position: relative;
+}
+
+.keep-note {
+  position: absolute;
+  top: 46px;
+  left: -72px;
+  width: 54px;
+  text-align: right;
+  color: var(--graphite);
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.keep-note.on {
+  animation: keep-note 460ms var(--ease) forwards;
+}
+
+@keyframes keep-note {
+  0% { opacity: 0; transform: translateY(2px); }
+  18% { opacity: 0.85; transform: translateY(0); }
+  72% { opacity: 0.85; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-1px); }
+}
+
+/* Keep sets the sheet down; Cut keeps its strike and blur. */
+.card.sheet.is-kept {
+  animation: keep-settle 220ms var(--ease) forwards;
+}
+
+@keyframes keep-settle {
+  0% { opacity: 1; transform: translateY(0); }
+  55% { opacity: 0.92; transform: translateY(2px); }
+  100% { opacity: 0; transform: translateY(4px); }
+}
+
+@media (max-width: 900px) {
+  .keep-note {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.sheet.is-kept {
+    animation-name: keep-fade;
+  }
+
+  .keep-note.on {
+    animation-name: keep-note-fade;
+  }
+
+  @keyframes keep-fade {
+    to { opacity: 0; }
+  }
+
+  @keyframes keep-note-fade {
+    from { opacity: 0; }
+    to { opacity: 0.85; }
+  }
+}
+
+/* ---------- Connect: one promise, one action ---------- */
+
+.connect .wordmark {
+  margin-bottom: 44px;
+}
+
+.connect-headline {
+  margin-bottom: 22px;
+  font-size: clamp(2rem, 4.4vw, 2.9rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+}
+
+.connect-copy {
+  max-width: 46ch;
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.connect-actions {
+  margin-top: 40px;
+}

@@ -29,7 +29,7 @@ export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
     { card, struck, kept, gone, busy, error, onKeep, onCut, onAnimationEnd },
     keepRef,
   ) {
-    const cardClass = ['card', kept ? 'is-kept' : '', gone ? 'is-gone' : '']
+    const cardClass = ['card', 'sheet', kept ? 'is-kept' : '', gone ? 'is-gone' : '']
       .filter(Boolean)
       .join(' ')
     const mediaLabel = card.asset?.type === 'video' ? 'Video post' : 'Image post'
