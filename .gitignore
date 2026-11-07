@@ -1,1 +1,9 @@
 .env
+node_modules/
+dist/
+.session-key
+.vercel/
+certs/
+*.local
+*.tsbuildinfo
+.DS_Store

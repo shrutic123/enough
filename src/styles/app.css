@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* App shell only. Enough's tokens, layout and motion live in enough.css. */
+.wordmark {
+  margin: 0 0 32px;
+  font-family: 'Instrument Sans', system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.headline {
+  margin: 0 0 20px;
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.body-copy {
+  margin: 0 0 10px;
+  max-width: 44ch;
+  color: var(--graphite);
+}
+
+.error-copy {
+  margin: 20px 0 0;
+  max-width: 52ch;
+  color: var(--graphite);
+  font-size: 0.9rem;
+}
+
+a.act {
+  color: var(--ink);
+  text-decoration: none;
+}
