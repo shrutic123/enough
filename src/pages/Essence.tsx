@@ -334,7 +334,7 @@ export default function EssencePage({
             </div>
           ) : (
             <section
-              className="essay-field essay-result"
+              className="essay-field"
               aria-label="Trimmed draft"
               aria-busy={phase === 'diff' ? true : undefined}
             >
@@ -373,8 +373,9 @@ export default function EssencePage({
             </section>
           )}
 
-          <div className="essay-field">
-            {channelState === 'ready' && channels.length > 0 ? (
+          <div className="essay-meta">
+            <div className="essay-field">
+              {channelState === 'ready' && channels.length > 0 ? (
               <>
                 <label className="essay-label" htmlFor="essence-channel">
                   Channel
@@ -465,6 +466,7 @@ export default function EssencePage({
                 ? 'Goes into the next open slot.'
                 : 'Stays a draft until you schedule it.'}
             </p>
+          </div>
           </div>
 
           <div className="actions">

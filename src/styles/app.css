@@ -69,6 +69,13 @@ a.act {
   margin: 24px 0 0;
 }
 
+/* Where it goes: grouped so the draft stays the subject. */
+.essay-meta {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
 .essay-label {
   color: var(--graphite);
   font-size: 0.9rem;
@@ -90,7 +97,7 @@ a.act {
 }
 
 .essay-input {
-  min-height: 132px;
+  min-height: 168px;
   resize: vertical;
 }
 
