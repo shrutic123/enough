@@ -51,6 +51,16 @@ a.act {
   font-size: 0.9rem;
 }
 
+/* A failed Cut keeps the card and says what happened in the ink colour. */
+.card-error {
+  color: var(--ink);
+}
+
+/* Actions stay focusable while a decision is in flight; the handler ignores them. */
+.act[aria-disabled='true'] {
+  cursor: default;
+}
+
 /* Polite announcements, kept out of the visual layout. */
 .visually-hidden {
   position: absolute;

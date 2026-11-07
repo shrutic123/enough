@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { QueueCard, SessionResponse } from '../types'
-import { getQueue } from '../lib/api'
+import { getQueue, cutPost } from '../lib/api'
 import { formatLeft } from '../lib/format'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { QueueCardView, type ReviewCard } from '../components/QueueCard'
@@ -90,6 +90,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const [gone, setGone] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [announcement, setAnnouncement] = useState('')
+  const [cutError, setCutError] = useState<string | null>(null)
 
   const timers = useRef<number[]>([])
   const phaseRef = useRef<Phase>('idle')
@@ -99,6 +100,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
   const decisionRef = useRef<Decision | null>(null)
   const pendingFocusRef = useRef(false)
   const keepButtonRef = useRef<HTMLButtonElement>(null)
+  const mountedRef = useRef(true)
 
   const clearTimers = useCallback(() => {
     for (const id of timers.current) window.clearTimeout(id)
@@ -113,7 +115,13 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     timers.current.push(id)
   }, [])
 
-  useEffect(() => () => clearTimers(), [clearTimers])
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      clearTimers()
+    }
+  }, [clearTimers])
 
   useEffect(() => {
     if (isDemo) {
@@ -171,6 +179,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
     setStruck(false)
     setKeptVisual(false)
     setCollapsed(false)
+    setCutError(null)
 
     if (decision === 'keep') {
       setKept((value) => value + 1)
@@ -220,15 +229,43 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
 
   const handleCut = useCallback(() => {
     if (phaseRef.current !== 'idle') return
-    if (!cardsRef.current[indexRef.current]) return
+
+    const card = cardsRef.current[indexRef.current]
+    if (!card) return
 
     decisionRef.current = 'cut'
     phaseRef.current = 'striking'
     setPhase('striking')
     setStruck(true)
+    setCutError(null)
 
-    later(beginLeaving, reduced ? 0 : STRIKE_MS)
-  }, [beginLeaving, later, reduced])
+    // The pencil draws while Buffer deletes. The card only dissolves once the
+    // delete is confirmed, so a failure leaves the queue and the card intact.
+    const startedAt = Date.now()
+    const remove = isDemo ? Promise.resolve({ ok: true as const }) : cutPost(card.id)
+
+    remove
+      .then(() => {
+        if (!mountedRef.current || phaseRef.current !== 'striking') return
+        const wait = reduced ? 0 : Math.max(0, STRIKE_MS - (Date.now() - startedAt))
+        later(beginLeaving, wait)
+      })
+      .catch((reason: unknown) => {
+        if (!mountedRef.current) return
+
+        clearTimers()
+        decisionRef.current = null
+        phaseRef.current = 'idle'
+        setPhase('idle')
+        setStruck(false)
+
+        const message =
+          reason instanceof Error && reason.message
+            ? reason.message
+            : "Buffer didn't delete that post. Your queue is unchanged. Try again."
+        setCutError(message)
+      })
+  }, [beginLeaving, clearTimers, isDemo, later, reduced])
 
   const handleKeep = useCallback(() => {
     if (phaseRef.current !== 'idle') return
@@ -350,6 +387,7 @@ export default function QueuePage({ session }: { session: SessionResponse }) {
               kept={keptVisual}
               gone={gone}
               busy={phase !== 'idle'}
+              error={cutError}
               onKeep={handleKeep}
               onCut={handleCut}
               onAnimationEnd={handleCardAnimationEnd}

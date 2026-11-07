@@ -47,3 +47,11 @@ export function getQueue(organizationId: string): Promise<QueueResponse> {
 export function logout(): Promise<void> {
   return request<void>('/api/auth/logout', { method: 'POST' })
 }
+
+export function cutPost(postId: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>('/api/buffer/cut', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ postId }),
+  })
+}

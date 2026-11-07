@@ -15,6 +15,7 @@ type QueueCardViewProps = {
   kept: boolean
   gone: boolean
   busy: boolean
+  error?: string | null
   onKeep: () => void
   onCut: () => void
   onAnimationEnd: () => void
@@ -22,7 +23,7 @@ type QueueCardViewProps = {
 
 export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
   function QueueCardView(
-    { card, struck, kept, gone, busy, onKeep, onCut, onAnimationEnd },
+    { card, struck, kept, gone, busy, error, onKeep, onCut, onAnimationEnd },
     keepRef,
   ) {
     const cardClass = ['card', kept ? 'is-kept' : '', gone ? 'is-gone' : '']
@@ -41,12 +42,29 @@ export const QueueCardView = forwardRef<HTMLButtonElement, QueueCardViewProps>(
           <span className={struck ? 'struck on' : 'struck'}>{card.text}</span>
         </p>
         <p className="card-sub">{formatCardSubline(card.channelName, card.dueAt)}</p>
-        {card.reason ? <p className="card-why">{card.reason}</p> : null}
+        {error ? (
+          <p className="card-why card-error" role="alert">
+            {error}
+          </p>
+        ) : card.reason ? (
+          <p className="card-why">{card.reason}</p>
+        ) : null}
         <div className="actions">
-          <button ref={keepRef} className="act" type="button" onClick={onKeep}>
+          <button
+            ref={keepRef}
+            className="act"
+            type="button"
+            aria-disabled={busy || undefined}
+            onClick={onKeep}
+          >
             Keep <kbd aria-hidden="true">K</kbd>
           </button>
-          <button className="act" type="button" onClick={onCut}>
+          <button
+            className="act"
+            type="button"
+            aria-disabled={busy || undefined}
+            onClick={onCut}
+          >
             Cut <kbd aria-hidden="true">C</kbd>
           </button>
         </div>

@@ -156,9 +156,10 @@ export const AUTH_URL = 'https://auth.buffer.com/auth'
 export const TOKEN_URL = 'https://auth.buffer.com/token'
 export const API_URL = 'https://api.buffer.com'
 
-// Ask for exactly what this slice uses. Write scopes (posts:write) are added
-// when the Cut/Create mutations ship, which requires re-consent.
-export const SCOPES = 'account:read posts:read offline_access'
+// Ask for exactly what the app uses. posts:write covers Cut (and the create
+// endpoints when they ship). Adding a scope requires re-consent, so every new
+// scope must be enabled on the app client first.
+export const SCOPES = 'account:read posts:read posts:write offline_access'
 
 // Someone building against the API needs Buffer's own words to debug; someone
 // using the deployed app must not see internals. Same call site, both audiences:

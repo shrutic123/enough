@@ -4,6 +4,7 @@ import { readSession } from './session.js'
 import {
   ACCOUNT_QUERY,
   CHANNELS_QUERY,
+  DELETE_POST_MUTATION,
   QUEUE_QUERY,
   buildAuthorizeUrl,
   createPkcePair,
@@ -40,6 +41,19 @@ const wrap = (handler) => async (req, res, next) => {
   } catch (err) {
     if (err.status) return res.status(err.status).json({ error: err.message })
     next(err)
+  }
+}
+
+// A mutation must come from the app's own origin. The session cookie is
+// SameSite=Lax, which already blocks cross-site form posts, and a cross-origin
+// fetch cannot send JSON without a preflight. This check makes the intent
+// explicit instead of relying on those two facts staying true.
+function requireSameOrigin(req) {
+  const origin = req.get('origin')
+  if (!origin) return // same-origin navigations may omit it; Lax still applies
+  const expected = REDIRECT_URI ? new URL(REDIRECT_URI).origin : null
+  if (!expected || origin !== expected) {
+    throw new HttpError(403, 'That request came from another site. Reload Enough and try again.')
   }
 }
 
@@ -199,6 +213,38 @@ app.get(
 
     const posts = (queue.posts?.edges || []).map((edge) => edge.node)
     res.json({ posts: normalizeQueue(posts, channels) })
+  }),
+)
+
+app.post(
+  '/api/buffer/cut',
+  wrap(async (req, res) => {
+    requireSameOrigin(req)
+
+    const postId = req.body?.postId
+    if (typeof postId !== 'string' || !postId.trim() || postId.length > 200) {
+      throw new HttpError(400, 'postId is required')
+    }
+
+    // The id belongs to the signed-in user's own queue, so the session is the
+    // authorization boundary. Buffer owns the final check: an id that is gone
+    // or not theirs comes back as a typed mutation error.
+    const data = await graphql(req.ctx, DELETE_POST_MUTATION, {
+      input: { id: postId.trim() },
+    })
+    const result = data?.deletePost
+
+    if (!result || typeof result.id !== 'string') {
+      throw new HttpError(
+        502,
+        withCause(
+          "Buffer couldn't delete that post. Try again.",
+          typeof result?.message === 'string' ? result.message : undefined,
+        ),
+      )
+    }
+
+    res.json({ ok: true })
   }),
 )
 

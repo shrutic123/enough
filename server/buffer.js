@@ -248,6 +248,18 @@ export const QUEUE_QUERY = `
   }
 `
 
+// `deletePost` has its own payload union, different from createPost:
+// DeletePostSuccess | VoidMutationError. Spreading the wrong fragment fails
+// schema validation, so this shape is deliberate.
+export const DELETE_POST_MUTATION = `
+  mutation DeletePost($input: DeletePostInput!) {
+    deletePost(input: $input) {
+      ... on DeletePostSuccess { id }
+      ... on VoidMutationError { message }
+    }
+  }
+`
+
 // Join each post to its channel and trim it to the QueueCard contract in
 // src/types.ts. Media-only posts have no text, so they are skipped in v1.
 export function normalizeQueue(posts, channels) {
