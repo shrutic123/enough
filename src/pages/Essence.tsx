@@ -377,6 +377,26 @@ export default function EssencePage({
             </section>
           )}
 
+          {phase === 'edit' ? (
+            <>
+              <div className="actions">
+                <button
+                  className="act"
+                  type="button"
+                  aria-disabled={canTrim ? undefined : true}
+                  onClick={handleTrim}
+                >
+                  {trimming ? 'Trimming.' : 'Trim'}
+                </button>
+              </div>
+              {trimError ? (
+                <p className="essay-error" role="alert">
+                  {trimError}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+
           <div className="essay-meta">
             <div className="essay-field">
               {!organizationId ? (
@@ -478,43 +498,27 @@ export default function EssencePage({
           </div>
           </div>
 
-          {phase === 'edit' ? (
-            <div className="actions">
-              <button
-                className="act"
-                type="button"
-                aria-disabled={canTrim ? undefined : true}
-                onClick={handleTrim}
-              >
-                {trimming ? 'Trimming.' : 'Trim'}
-              </button>
-            </div>
-          ) : phase === 'result' ? (
-            <div className="actions">
-              <button
-                className="act"
-                type="button"
-                aria-disabled={canSend ? undefined : true}
-                onClick={handleSend}
-              >
-                {sending ? 'Sending.' : 'Send to Buffer'}
-              </button>
-              <button className="act" type="button" onClick={handleEditDraft}>
-                Edit draft
-              </button>
-            </div>
-          ) : null}
-
-          {trimError ? (
-            <p className="essay-error" role="alert">
-              {trimError}
-            </p>
-          ) : null}
-
-          {sendError ? (
-            <p className="essay-error" role="alert">
-              {sendError}
-            </p>
+          {phase === 'result' ? (
+            <>
+              <div className="actions">
+                <button
+                  className="act"
+                  type="button"
+                  aria-disabled={canSend ? undefined : true}
+                  onClick={handleSend}
+                >
+                  {sending ? 'Sending.' : 'Send to Buffer'}
+                </button>
+                <button className="act" type="button" onClick={handleEditDraft}>
+                  Edit draft
+                </button>
+              </div>
+              {sendError ? (
+                <p className="essay-error" role="alert">
+                  {sendError}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
       </main>

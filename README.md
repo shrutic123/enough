@@ -18,7 +18,7 @@ Enough is an editor's desk. One card at a time, one decision: keep it or cut it.
 ## What it does
 
 1. **Queue.** Reads scheduled posts, drafts, errors and posts awaiting approval. Shows one card with its network, account, date, a thumbnail when the post has media, and a plain-language reason. **K** keeps, **C** cuts. Cut deletes the post in Buffer; a failure keeps the card and says so.
-2. **Essence editor.** Paste a draft, choose a channel and a destination, then **Trim**. The server returns a shorter version; the browser computes the word-level diff, draws the blue pencil through the removed words and collapses them. The result stays editable, then goes to Buffer as a queued post or a draft. Instagram needs an image, so the editor asks for an optional public image URL when that channel is selected.
+2. **Essence editor.** Paste a draft and press **Trim**. The server returns a shorter version; the browser computes the word-level diff, draws the blue pencil through the removed words and collapses them. The result stays editable; choose a channel and a destination, then send it to Buffer as a queued post or a draft. Instagram needs an image, so the editor asks for an optional public image URL when that channel is selected. If the draft is already tight, it says so instead of playing an empty animation.
 
 There is no Merge, no ideas manager, and no AI audit in this release. Keep/Cut is the whole review, because one decision per card is the point.
 
@@ -96,7 +96,7 @@ Browser (React + Vite)
 
 - The server is plain JavaScript ESM; the client is TypeScript.
 - One Express function at `/api` locally and on Vercel.
-- A failed Cut never removes the card. The card dissolves only after Buffer confirms the delete.
+- A failed Cut never removes the card. The card only leaves after Buffer confirms the delete.
 - The browser never sees a Buffer token or the AI key.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
@@ -106,14 +106,14 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Trim:** only the draft text is sent. No account id, email, channel name or queue data.
 - **Queue:** no post text is sent to an AI provider in this release. Reasons come from status and date.
 - **Stored:** nothing beyond the session cookie. Drafts are not saved on the server.
-- **Provider:** whichever key is set, in order: Gemini (`gemini-3.5-flash-lite`), OpenAI (`gpt-4.1-mini`), Anthropic (`claude-sonnet-4-5`). `AI_MODEL` overrides the model.
+- **Provider:** whichever key is set, in order: Gemini (`gemini-3.6-flash`), OpenAI (`gpt-4.1-mini`), Anthropic (`claude-sonnet-4-5`). `AI_MODEL` overrides the model. Gemini runs at minimal thinking and falls back once to `gemini-3.5-flash-lite` if the newer model is over quota or not served, which is common on a free key.
 - The trim prompt forbids adding facts, links, hashtags, emoji or new sentences, and asks for the text only. The client computes the diff, so a mark can only appear on a word the model actually dropped.
 
 ## Design notes
 
 One 640px column, left-aligned. Instrument Sans everywhere; Instrument Serif italic only for "Enough." The blue pencil `#2F4BFF` is the only accent and only ever marks a cut or holds focus. Actions are text with key hints, not buttons in boxes.
 
-Motion answers an action: the pencil draws (220ms), the card dissolves (320ms), the gap collapses (280ms). Keep has its own quieter beat: the sheet settles and a graphite "kept" note appears in the margin. The one unprompted moment is the end screen, where "Enough." settles once. With `prefers-reduced-motion`, those become 120ms fades with no transforms and no stagger.
+Motion answers an action: the pencil draws (220ms), a confirmed cut crumples the sheet as paper on a canvas (650ms) with a quiet synthesized rustle, then the gap collapses (280ms). Keep has its own quieter beat: the sheet lifts, slides back under the pile and a graphite "kept" note appears in the margin. The one unprompted moment is the end screen, where "Enough." settles once. With `prefers-reduced-motion`, those become 120ms fades with no transforms and no stagger. Sound has a header toggle, and the choice is remembered locally.
 
 Dropped on purpose: Merge, because it is two calls with a partial-failure state; an AI queue audit, because deterministic reasons were enough and the model was not allowed to make the decision; idea creation, because ideas cannot be updated or deleted and cannot join Keep/Cut.
 

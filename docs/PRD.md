@@ -1,6 +1,6 @@
 # Enough — Product Requirements
 
-**Status:** draft v0.2, Nov 6 2026
+**Status:** v1.0, Nov 8 2026 — built, deployed, live OAuth verified.
 **Contest:** Buffer Commit 2026 (Oct 28 – Nov 13, 2026)
 **Working name:** Enough
 **Owner:** Shruti
@@ -32,20 +32,20 @@ Buffer's queue is an inventory. It shows everything and asks you to manage it. D
 
 An editor's desk. The only accent is a proofreader's blue pencil, and it is used for exactly one thing: marking what gets cut.
 
-- One centered column, one card at a time.
+- One 640px column, text left-aligned.
 - One decision per card: **Keep** or **Cut**.
 - The reward is the end state: **"Enough."**
 
 The product is deliberately small. It does two things well rather than becoming a Buffer client.
 
-**What changed in this slice (Nov 7):** the release is **Keep/Cut plus the Essence editor**. It reads the real queue, shows one card at a time, and Cut deletes the post in Buffer. The editor trims a draft, shows the word-level diff, and sends the result as a queued post or a draft. Merge and ideas remain out of v1.
+**What changed in this release (Nov 8):** the release is **Keep/Cut plus the Essence editor**. It reads the real queue, shows one card at a time, and Cut deletes the post in Buffer. The editor trims a draft, shows the word-level diff, and sends the result as a queued post or a draft. Merge and ideas remain out of v1. The app is deployed at <https://enough-nu-flame.vercel.app> with the production OAuth callback registered and the live round trip verified.
 
 ## 4. Goals and non-goals
 
 ### Goals
 
 - **G1** Connect through Buffer OAuth and read the user's real queue.
-- **G2** Surface a short, ordered review set (near-duplicates, stale items, over-posting) with one plain-language reason per card.
+- **G2** Surface the queue one card at a time in due-date order, with a deterministic plain-language reason when there is one.
 - **G3** Let the user Keep or Cut each item, where Cut deletes the real Buffer post.
 - **G4** Trim a draft to one idea, show exactly which words were removed, and send the result to Buffer as a scheduled post or a draft.
 - **G5** Feel calm and distinctive enough to be remembered. Target the Delight Award.
@@ -78,7 +78,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 ### 6.1 Connect
 
-**Build status:** server-side OAuth and session built; not yet browser-tested.
+**Build status:** built and verified in the browser locally and in production. Live OAuth, queue read, Cut and the editor all work against a real Buffer account.
 
 **Flow**
 
@@ -100,38 +100,33 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 ### 6.2 Queue declutter
 
-**Build status:** queue read, the Keep/Cut card and the real Cut are built. The OAuth round trip has not been tested in a browser yet.
+**Build status:** built and live. Queue read, the Keep/Cut card and the real Cut are verified in production.
 
 **Input:** scheduled posts and drafts from the selected organization.
 
-**Review set:** a short ordered list, at most 20 cards.
+**Review set:** every queued post the read returns, up to 20 cards, in due-date order (missing dates last). The set is not pre-filtered: the human decides, not a model, and a run of calm decisions is the point. A post carries a deterministic reason when the status is `error` or the due date is in the past.
 
-1. Near-duplicates (pairs or groups; show one card at a time with "Similar to…" in graphite).
-2. Stale items (due date in the past, or `error` status).
-3. Over-posting (more than N posts on one channel in a rolling 7 days).
-4. Everything else, only if the user asks to keep reviewing.
-
-If nothing is flagged, go straight to the end screen.
+If there are no posts, go straight to the end screen.
 
 **Card**
 
 - The post text, large, at most 36ch per line.
 - Channel name and due date, small and graphite.
-- One reason line: "Nearly the same as another post" / "Scheduled three weeks ago" / "Five posts on LinkedIn this week."
+- When there is one, a reason line: "This one didn't send." / "This was meant to go out already."
 - Two text actions: **Keep** `K` and **Cut** `C`.
 - A quiet count: "12 left."
 
 **Actions**
 
 - **Keep:** advance. No Buffer call. The post stays exactly as it is.
-- **Cut:** `deletePost`. The pencil draws while Buffer deletes; the card dissolves only once the delete is confirmed, then the gap collapses. Focus moves to the next card's Keep action.
+- **Cut:** `deletePost`. The pencil draws while Buffer deletes; once the delete is confirmed the sheet crumples as paper, the gap collapses, and focus moves to the next card's Keep action. The Cut button holds focus while the cut is in flight.
 - **Cut failure:** the card stays, its reason is replaced by "Buffer couldn't delete that post. Try again." No local state is lost.
 
 **Merge (stretch, not v1):** only for same-channel near-duplicates. Edit the kept post to include the other's unique line, then delete the other. If either call fails, stop and explain what happened.
 
 **End**
 
-When the review set is empty, show **"Enough."** in Instrument Serif italic. Subline: "12 kept. 8 cut." Secondary actions: "Back to Buffer" and "Review again" (only if unflagged posts remain).
+When the review set is empty, show **"Enough."** in Instrument Serif italic. Subline: "12 kept. 8 cut." Secondary actions: "Back to Buffer", "Trim a draft", and "Start over".
 
 **Acceptance**
 
@@ -148,12 +143,12 @@ When the review set is empty, show **"Enough."** in Instrument Serif italic. Sub
 **Flow**
 
 1. Paste a draft.
-2. Choose a channel and a destination:
+2. Press **Trim**, directly under the sheet. The server returns the trimmed text. The client computes a word-level diff, marks each removed word with the blue pencil, then collapses the removed words with a 25ms stagger while the count goes from the original to the result. The sheet keeps one height through edit, diff and result, so the page does not jump.
+3. If the model returns the draft unchanged, there is no mark to draw: go straight to the result and read "N words. Already tight."
+4. The user can edit the result before sending.
+5. Choose a channel and a destination:
    - **Scheduled post** — channel required; `addToQueue`.
    - **Draft** — channel required; `saveToDraft: true`.
-3. Press **Trim**.
-4. The server returns the trimmed text. The client computes a word-level diff, marks each removed word with the blue pencil, then collapses the removed words with a 25ms stagger while the word count ticks down.
-5. The user can edit the result before sending.
 6. **Send to Buffer** creates the chosen item and confirms what was created.
 
 Instagram requires an image, so the editor asks for an optional public image URL when that channel is selected. Network character limits are checked before sending; TikTok, YouTube and Pinterest are blocked with a reason because this version sends text and images only.
@@ -168,6 +163,8 @@ Instagram requires an image, so the editor asks for an optional public image URL
 **Acceptance**
 
 - The marked cuts match the diff exactly.
+- The sheet height does not change between edit, diff and result.
+- A draft the model leaves alone shows the result with "Already tight", not an empty animation.
 - Sending creates a real item of the chosen type in Buffer.
 - Errors are specific: what happened and what to do next.
 - Reduced-motion users see fades and the final count, not the stagger.
@@ -178,7 +175,7 @@ Instagram requires an image, so the editor asks for an optional public image URL
 
 - **"Enough."** fades in while its letter-spacing tightens. This is the only unprompted motion in the app.
 - Subline with the session totals.
-- Links back to Buffer and, when relevant, back to the remaining queue.
+- Links back to Buffer, into the Essence editor, and a start-over action.
 - Reduced motion: fade only, no tracking change.
 
 ## 7. AI behaviour
@@ -201,6 +198,8 @@ Instagram requires an image, so the editor asks for an optional public image URL
 - Send the draft text only.
 - Ask for the trimmed text only, not a list of indices. The client derives the diff, so the UI cannot mark a cut the model did not make.
 - Cap output length; reject empty or wildly longer responses.
+- Gemini runs at minimal thinking and defaults to `gemini-3.6-flash`, with one fallback to `gemini-3.5-flash-lite` when the newer model is unavailable or over quota. A free key usually takes that fallback; the trim still works.
+- The route spends provider quota without a session, so it is capped at 20 requests per client per 10 minutes.
 
 ### Data
 
@@ -216,9 +215,9 @@ Instagram requires an image, so the editor asks for an optional public image URL
 - The pencil accent is used only for cuts and focus. Never for decoration, success or links.
 - Actions are plain text with key hints, not boxes.
 - Motion answers an action:
-  - Cut: strike draws (220ms) → card dissolves (320ms) → gap collapses.
-  - Keep: card slides right (180ms).
-  - Essence: removed words are struck, then collapse with a 25ms stagger; the count ticks down.
+  - Cut: strike draws (220ms) → confirmed delete → canvas crumple (650ms) with a synthesized rustle → gap collapses (280ms).
+  - Keep: the sheet lifts, slides down and back under the pile (220ms) with a graphite "kept" note.
+  - Essence: removed words are struck, then collapse with a 25ms stagger; the count shows the original and the result.
   - End: "Enough." settles once.
 - Reduced motion: fades only, 120ms, no transforms or stagger.
 - Copy: sentence case, plain verbs, no exclamation marks. Errors say what happened and what to do.
@@ -250,7 +249,7 @@ For judging (usefulness, execution and craft, creativity):
 - A first-time user makes a meaningful decision within 30 seconds of connecting.
 - The demo shows connect → review → cut → trim → send → "Enough." in under two minutes.
 - No dead ends, no layout shift, no double submits.
-- The cut dissolve and the "Enough." screen are the two things a judge remembers.
+- The cut crumple and the "Enough." screen are the two things a judge remembers.
 
 For the build:
 
@@ -280,23 +279,24 @@ For the build:
 | AI inconsistency or latency | Deterministic fallbacks for audit; AI returns text only; client diff. |
 | Token refresh collision | Single server-side refresh path; accept the cookie limitation for v1 and document it. |
 | Scope creep | Merge is stretch. No composer, calendar or analytics. |
-| Time | Protect the cut dissolve and the end screen above everything else. |
+| Time | Protect the cut crumple and the end screen above everything else. |
 
 ## 14. Build status
 
-**Last updated: Nov 7, 2026.**
+**Last updated: Nov 8, 2026.**
 
 | Area | Status |
 |---|---|
 | Repo + design tokens | Done before the window work (Nov 5) |
 | Client scaffold | Done — Vite + React + TypeScript + Tailwind 3, local HTTPS on 5173 |
-| OAuth + session | Built and browser-tested; local redirect URI registered |
+| OAuth + session | Built and verified locally and in production; both redirect URIs registered |
 | Channels + queue read | Built — real queue, media thumbnail and network name on each card |
-| Card + Keep/Cut | Built — strike/dissolve/collapse, keyboard, focus, live region, end screen, sheet stack, progress hairline, keep note; Cut calls `deletePost` and keeps the card on failure |
-| Essence editor | Built — provider seam, trim, word-level diff, editable result, draft and queued post |
+| Card + Keep/Cut | Built — strike, canvas crumple, collapse, keyboard, focus, live region, end screen, sheet stack, progress hairline, keep note; Cut calls `deletePost` and keeps the card on failure |
+| Sound | Built — synthesized paper crumple at gain 0.3, header toggle, preference stored locally |
+| Essence editor | Built — provider seam, trim, word-level diff, stable sheet height, editable result, draft and queued post |
 | Network guard | Built — per-network character limits, required image for Instagram, notification scheduling for personal profiles, video/board channels blocked with a reason |
 | Queue audit | Out of v1 |
-| Deploy | Config prepared (`vercel.json`, `docs/DEPLOY.md`); not deployed |
+| Deploy | Live at <https://enough-nu-flame.vercel.app>; production redirect URI registered; smoke test passed |
 | README + video + submission | README current; video and submission pending |
 
 ### Resolved decisions
@@ -316,7 +316,7 @@ These were open disagreements; they are settled for v1.
 
 ## 15. Open questions
 
-1. **Production domain:** the Vercel URL is unknown; the production redirect URI is not registered.
-2. **Demo video:** record after the design pass and deployment.
-3. **Post-v1, only if time:** a "never cut these" list, or a density reason ("Third post that day"). Not before deploy and video.
+1. **Demo video:** record before the submission deadline; add the link to the README.
+2. **Stronger model:** the current free Gemini key is quota-blocked on `gemini-3.6-flash`, so production takes the Lite fallback. Enabling billing or adding an OpenAI/Anthropic key would make the stronger model the normal path.
+3. **Post-v1, only if time:** a "never cut these" list, or a density reason ("Third post that day"). Not before video and submission.
 4. **Undo:** stays out. The demo uses a test account.

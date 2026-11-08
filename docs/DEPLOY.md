@@ -4,6 +4,10 @@ Enough runs as a Vite static build plus one Vercel function. The client is
 served from `dist/`; `/api/*` is the Express app in `server/app.js`, exported
 through `api/index.js`.
 
+Live: <https://enough-nu-flame.vercel.app>. The production callback is
+registered and the OAuth round trip is verified. This document remains the
+runbook for a fresh environment.
+
 ## Before deploying: the Buffer app client
 
 In Buffer, open **Settings → API** and create (or edit) the app client.

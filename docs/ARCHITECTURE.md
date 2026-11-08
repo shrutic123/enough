@@ -1,6 +1,6 @@
 # Enough — Technical Architecture
 
-**Status:** living draft, v0.2, Nov 6 2026.
+**Status:** living doc, v1.0, Nov 8 2026.
 **Source of truth:** the code. This document is reconciled after each session.
 **Related:** [PRD](PRD.md), [BUILD_LOG](../BUILD_LOG.md), [README](../README.md).
 
@@ -27,7 +27,7 @@ Browser (React + Vite)                    [built]
 Two hosting modes, one server codebase:
 
 - **Local [built]:** Vite dev server on `https://localhost:5173`, Express on `http://localhost:3001`, Vite proxies `/api` to Express. One browser origin, so the session cookie and the OAuth callback share a host.
-- **Production [built but unverified]:** Vercel serves the Vite build as static files and runs the same Express app as one serverless function at `/api`. The rewrite has not been exercised on a live deployment.
+- **Production [built; live]:** Vercel serves the Vite build as static files and runs the same Express app as one serverless function at `/api`. Verified at <https://enough-nu-flame.vercel.app>: the rewrite preserves nested `/api/*` paths, OAuth completes, and the queue, Cut and Trim work against Buffer.
 
 ## 2. Repository layout
 
@@ -42,7 +42,6 @@ enough/
     session.js                  iron-session wrapper
     buffer.js                   PKCE, token exchange/refresh, GraphQL client, queries
     ai.js                       provider seam: Gemini, OpenAI or Anthropic by key presence
-    limits.js                   per-network length and media rules, checked before create
   src/
     main.tsx                    React entry
     App.tsx                     session load, dev demo bypass, Connect vs Queue
@@ -50,17 +49,21 @@ enough/
     lib/api.ts                  typed fetch helpers (session, channels, queue, cut, trim, create)
     lib/diff.ts                 word-level LCS diff, computed in the browser
     lib/format.ts               date, subline, counts, network labels
+    lib/sound.ts                synthesized paper crumple; preference helpers
     pages/Connect.tsx           connect screen
     pages/Queue.tsx             review session and motion state machine
     pages/End.tsx               end screen
     pages/Essence.tsx           trim, diff, optional image URL, send to Buffer
     components/QueueCard.tsx    one card, Keep/Cut, thumbnail, network
+    components/Crumple.tsx      canvas paper-crumple for a confirmed Cut
     components/WordDiff.tsx     pencil-mark rendering for removed words
     hooks/useReducedMotion.ts   matchMedia listener
+    hooks/useInputModality.ts   keyboard vs pointer, for the focus ring
     fixtures/cards.ts           dev-only demo cards
     styles/app.css              Tailwind directives + app rules
   enough.css                    design tokens and motion (pre-existing)
   tailwind.config.js            tokens mapped to CSS vars (pre-existing)
+  test/sound.test.mjs           Node test for the sound preference helpers
   docs/                         PRD, architecture, deploy notes
   vercel.json                   build/output + /api rewrite
   .env.example                  placeholders only
@@ -126,7 +129,7 @@ Buffer requires HTTPS even on localhost and compares redirect URIs character for
 - On a GraphQL 401: clear tokens, save, return 401 "Buffer rejected the access token — reconnect".
 - On 429: read `Retry-After`; retry once only when the wait is short (≤5 seconds). Otherwise return 429 with the wait. Rate limits are per app client, so all users share the quota.
 
-### Redirect URI **[built; local registered, production pending]**
+### Redirect URI **[built; local and production registered, live OAuth verified]**
 
 - Development default: `https://localhost:5173/api/auth/callback`.
 - `REDIRECT_URI` overrides it. Values are trimmed, a non-HTTPS URL warns, and an unparseable value falls back to the default with a warning.
@@ -152,9 +155,9 @@ Buffer requires HTTPS even on localhost and compares redirect URIs character for
 - Endpoint: `https://api.buffer.com` (POST, JSON `{query, variables}`).
 - Header: `Authorization: Bearer <access token>`.
 - A GraphQL failure is usually HTTP 200 with an `errors` array; it becomes a 502 with `extensions.code` plus `message` appended only in development.
-- A typed mutation failure would be data, not an exception (`... on MutationError { message }`). No mutation is wired yet.
+- A typed mutation failure is data, not an exception (`... on MutationError { message }`); the Cut and Create routes translate it into a sentence.
 - Channels are fetched on every queue request; there is **no cross-request cache**.
-- `organizationId` comes from the client query string. The server does not independently verify organization membership; the id is passed to Buffer and the result is whatever that token can read. Mutations must re-validate post ids against a freshly fetched queue when they are built.
+- `organizationId` comes from the client query string. The server does not independently verify organization membership; the id is passed to Buffer and the result is whatever that token can read. Mutations rely on the same boundary: Buffer rejects a post id that is not the user's.
 
 ### Account **[built]**
 
@@ -235,7 +238,7 @@ mutation DeletePost($input: DeletePostInput!) {
 }
 ```
 
-`DeletePostPayload` is a union of `DeletePostSuccess | VoidMutationError`, not the generic `MutationError`. The route returns `{ ok: true }` only when Buffer returns a deleted id; a typed error becomes a 502 with "Buffer couldn't delete that post. Try again." The client draws the pencil while the request is in flight and dissolves the card only after it resolves, so a failure never implies a delete that did not happen.
+`DeletePostPayload` is a union of `DeletePostSuccess | VoidMutationError`, not the generic `MutationError`. The route returns `{ ok: true }` only when Buffer returns a deleted id; a typed error becomes a 502 with "Buffer couldn't delete that post. Try again." The client draws the pencil while the request is in flight and only crumples the card after it resolves, so a failure never implies a delete that did not happen.
 
 `DeletePostInput` is `{ id: PostId! }`. The signed-in session is the authorization boundary: the id belongs to the user's own queue, and Buffer rejects an id that is not theirs. The route additionally requires a same-origin request. It does not re-fetch the queue before deleting, so a post removed elsewhere still returns Buffer's typed error rather than a local "not found".
 
@@ -408,7 +411,7 @@ The word count stays visible during the swap ("N words to M."). The result texta
 
 ### End **[built]**
 
-`.enough` uses the existing `settle` animation (`900ms`, letter-spacing tightens). The reduced-motion rule uses a dedicated `fade-in-only` keyframe. The heading receives focus on mount (`tabIndex={-1}`). Actions are "Back to Buffer" and "Start over" (a page reload), not "Review again".
+`.enough` uses the existing `settle` animation (`900ms`, letter-spacing tightens). The reduced-motion rule uses a dedicated `fade-in-only` keyframe. The heading receives focus on mount (`tabIndex={-1}`). Actions are "Back to Buffer", "Trim a draft" and "Start over" (a page reload), not "Review again".
 
 ### CSS fixes (resolved)
 
@@ -433,16 +436,17 @@ The word count stays visible during the swap ("N words to M."). The result texta
 - `/api/buffer/session` echoes `redirectUri` to debug character-level mismatches. **[built]**
 - Development error messages append the underlying cause via `withCause()`; production keeps the cause out of the response. **[built]**
 - Buffer's explorer (`developers.buffer.com/explorer.html`) is the reference for field names; do not guess. The sample app (`bufferapp/buffer-sample-apps`, `samples/app-client-starter-app`) is the reference for OAuth, refresh, 429 handling and `createPost` required fields.
-- AI failures are not logged yet because the AI layer is not built.
+- AI failures are logged as `ai_essence_failed` with the provider and HTTP status only; the draft and the key never appear in a log line. **[built]**
 
 ## 12. Verification
 
-No automated test suite in v1.
+`npm test` covers the sound preference helpers; there is no end-to-end suite in v1.
 
 Build checks:
 
 1. `npm run typecheck` (`tsc -b`).
-2. `npm run build` (`tsc -b && vite build`).
+2. `npm test` (`node --test test/*.test.mjs`).
+3. `npm run build` (`tsc -b && vite build`).
 
 Manual checks, run against a real Buffer account:
 
@@ -459,7 +463,7 @@ Manual checks, run against a real Buffer account:
 11. Send as a queued post. **Done, including Instagram personal profile (notification scheduling + image URL).**
 12. Network guard: over-limit and unsupported channels refuse before Buffer. **Built; unit-checked, not exercised in the browser.**
 13. Sign out: the endpoint clears the cookie, but no UI button calls it. **API only.**
-14. Production: connect, read the queue, cut a test post, send a draft, reconnect. **Not run; not deployed.**
+14. Production: connect, read the queue, cut a test post, send a draft, reconnect. **Done on <https://enough-nu-flame.vercel.app>.**
 
 ## 13. Known limitations
 
@@ -475,23 +479,24 @@ Manual checks, run against a real Buffer account:
 - Character limits are known for the common networks; an unknown service falls back to 4,000 characters. Buffer remains the final judge.
 - TikTok, YouTube and Pinterest creation is blocked with a reason: this version sends text and images, not video or boards.
 - Instagram personal profiles are scheduled as reminders, not automatic publishing.
-- Vercel's function rewrite path semantics are unconfirmed on a live deployment.
-- The production redirect URI is not registered yet and the production domain is unknown. Local OAuth works with `https://localhost:5173/api/auth/callback`.
+- The free Gemini key is quota-blocked on `gemini-3.6-flash`, so production normally takes the `gemini-3.5-flash-lite` fallback. Billing or another provider key makes the stronger model the normal path.
+- Production is live and verified; the demo video is still to be recorded.
 
 ## 14. Deployment runbook
 
-Prepared in `docs/DEPLOY.md`; **not executed**.
+Executed for production at <https://enough-nu-flame.vercel.app>. The steps below are the runbook that was followed.
 
 1. Create a Vercel project from the GitHub repo. Framework preset: Vite. Build `npm run build`; output `dist` (also set in `vercel.json`).
 2. Set environment variables in Vercel:
    - `BUFFER_CLIENT_ID`
    - `BUFFER_CLIENT_SECRET`
-   - `REDIRECT_URI=https://<production-domain>/api/auth/callback`
+   - `REDIRECT_URI=https://enough-nu-flame.vercel.app/api/auth/callback`
    - `SESSION_SECRET` (fresh, `openssl rand -hex 32`)
-   - `AI_API_KEY` (when the provider is chosen)
-3. Register the production redirect URI on the Buffer app client, character for character. Keep the localhost URI registered too.
-4. Deploy. Confirm `vercel.json` routes `/api/*` to the function and static files are served.
-5. Smoke test on production: connect, load the queue, keep through a card, cut a **test** post, confirm it is gone in Buffer, call `POST /api/auth/logout` (there is no UI button yet), reconnect.
+   - `GEMINI_API_KEY` (or `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`)
+   - `AI_MODEL` (optional override)
+3. Register the production redirect URI on the Buffer app client, character for character. Keep the localhost URI registered too. **Done.**
+4. Deploy. Confirm `vercel.json` routes `/api/*` to the function and static files are served. **Done.**
+5. Smoke test on production: connect, load the queue, keep through a card, cut a **test** post, confirm it is gone in Buffer, call `POST /api/auth/logout`, reconnect. **Done.**
 6. Do not use a preview deployment for OAuth unless its redirect URI is registered and `REDIRECT_URI` is set for it; cookies cannot cross hosts.
 
 ## 15. Decision log
@@ -512,16 +517,13 @@ Prepared in `docs/DEPLOY.md`; **not executed**.
 | D12 | Request only the scopes a slice uses | The read path shipped first; `posts:write` was added with Cut and needs one re-consent. |
 | D13 | Derive card reasons on the client | Status and due date are already in the queue payload; no server reason field yet. |
 | D14 | Fetch queue then channels sequentially | Both calls share one session; parallel refreshes could rotate the refresh token twice. |
-| D15 | Delete first, dissolve second | The card only leaves after Buffer confirms, so a failed Cut cannot look like a success. |
+| D15 | Delete first, crumple second | The card only leaves after Buffer confirms, so a failed Cut cannot look like a success. |
 | D16 | No queue re-fetch before Cut | The session already authorizes the user's own post; Buffer rejects anything else. One fewer call keeps the strike immediate. |
 | D17 | Require a same-origin `Origin` on mutations | Cheap, explicit CSRF defence that does not depend on `SameSite` alone. |
 
 ## 16. Open technical questions
 
-1. AI provider and model (one `complete()` seam).
-2. Does `deletePost` succeed for `error` status posts?
-3. Vercel rewrite: confirm `/api/(.*)` → `/api` preserves the Express path.
-4. Production domain and the exact registered redirect URIs.
-5. Review set: keep reviewing **all** posts (current code) or restore flagged-only from the PRD? This needs a product decision before the audit is built.
-6. Pagination: is the first 50 enough, or should the client follow `pageInfo` before capping at 20?
-7. Where should sign-out live now that `/api/auth/logout` exists but nothing calls it?
+1. Does `deletePost` succeed for `error` status posts?
+2. Pagination: is the first 50 enough, or should the client follow `pageInfo` before capping at 20?
+3. Where should sign-out live now that `/api/auth/logout` exists but nothing calls it?
+4. Should the project enable billing or add a second provider key so `gemini-3.6-flash` becomes the normal path instead of the Lite fallback?
