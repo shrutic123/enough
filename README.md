@@ -17,7 +17,7 @@ Enough is an editor's desk. One card at a time, one decision: keep it or cut it.
 
 ## What it does
 
-1. **Queue.** Reads scheduled posts, drafts, errors and posts awaiting approval. Shows one card with its network, account, date, a thumbnail when the post has media, and a plain-language reason. **K** keeps, **C** cuts. Cut deletes the post in Buffer; a failure keeps the card and says so.
+1. **Queue.** Reads scheduled posts, drafts, errors and posts awaiting approval. Shows one card with its network, account, date, a thumbnail when the post has media, and a plain-language reason when there is one. **K** keeps, **C** cuts. Cut deletes the post in Buffer; a failure keeps the card and says so.
 2. **Essence editor.** Paste a draft and press **Trim**. The server returns a shorter version; the browser computes the word-level diff, draws the blue pencil through the removed words and collapses them. The result stays editable; choose a channel and a destination, then send it to Buffer as a queued post or a draft. Instagram needs an image, so the editor asks for an optional public image URL when that channel is selected. If the draft is already tight, it says so instead of playing an empty animation.
 
 There is no Merge, no ideas manager, and no AI audit in this release. Keep/Cut is the whole review, because one decision per card is the point.

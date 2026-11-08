@@ -102,7 +102,7 @@ Verified against developers.buffer.com on Nov 6 2026.
 
 **Build status:** built and live. Queue read, the Keep/Cut card and the real Cut are verified in production.
 
-**Input:** scheduled posts and drafts from the selected organization.
+**Input:** `scheduled`, `draft`, `error` and `needs_approval` posts from the selected organization.
 
 **Review set:** every queued post the read returns, up to 20 cards, in due-date order (missing dates last). The set is not pre-filtered: the human decides, not a model, and a run of calm decisions is the point. A post carries a deterministic reason when the status is `error` or the due date is in the past.
 
