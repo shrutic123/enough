@@ -101,11 +101,22 @@ the request host matches the redirect URI host.
 ```
 
 Vercel gives the filesystem priority, so `dist/` assets are served normally and
-only `/api/*` reaches the function. The rewrite is expected to preserve the
-original `/api/...` path for Express, which the Buffer starter relies on. This
-has not been exercised against a live deployment in this repository: after
-deploying, check the deployment's Functions list shows `api/index.js` and that
-`/api/buffer/session` returns `{ "connected": false, ... }` rather than a 404.
-If nested paths do not reach Express, the fix is a catch-all function file
-(for example `api/[...path].js`) that imports the same app, not a change to the
-Express routes.
+only `/api/*` reaches the function. The rewrite preserves the original
+`/api/...` path for Express, which the Buffer starter relies on.
+
+This was exercised against a live anonymous Vercel deployment on Nov 7, 2026:
+
+- `/` returned the built app and its hashed `assets/…` files.
+- `/api/buffer/session` returned `{ "connected": false, "redirectUri": "…" }`,
+  not a 404, so nested paths reach Express intact.
+- `/api/auth/login` returned a `302` to Buffer with the production callback and
+  the four scopes.
+
+If a future deployment breaks nested routing, check that the Functions list
+shows `api/index.js`; the fix is a catch-all function file (for example
+`api/[...path].js`) that imports the same app, not a change to the Express
+routes.
+
+`.vercelignore` keeps `.env`, `.session-key` and local certificates out of the
+upload even when they exist in the working tree. Vercel sets
+`NODE_ENV=production`, so `server/config.js` never reads `.env` there.
