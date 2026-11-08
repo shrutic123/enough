@@ -4,7 +4,7 @@
 
 Built for **Buffer Commit 2026**. Connects to Buffer with OAuth and works on the real queue: keep or cut each post, then trim a draft to one idea and send it back.
 
-**Live app:** add the Vercel URL after the first deploy.
+**Live app:** <https://enough-nu-flame.vercel.app>
 **Demo video:** add the link after recording.
 
 ---
