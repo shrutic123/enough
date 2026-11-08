@@ -109,16 +109,21 @@ html[data-input='keyboard'] [role='button']:focus {
               style="--i: N" (its order among cut words) ---------- */
 .word { display: inline-block; white-space: nowrap; overflow: hidden; vertical-align: bottom;
         max-width: 100%; margin-right: .28em; }
-.word.cut { /* strike first, then collapse */
+/* One animation per cut word: the pencil draws for 220ms, holds for 60ms,
+   then the word collapses (280ms). Each word is delayed by its index so the
+   marks land in reading order. A CSS animation starts when the element
+   mounts, so it cannot lose a paint race the way a class flip can. */
+.word.cut {
   background-image: linear-gradient(var(--pencil), var(--pencil));
   background-repeat: no-repeat; background-position: 0 58%; background-size: 0% 2px;
-  transition: background-size 220ms var(--ease);
+  animation: cut-word 560ms var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 25ms);
 }
-.word.cut.on { background-size: 100% 2px; }
-.word.gone {
-  opacity: 0; max-width: 0; margin-right: 0;
-  transition: opacity 240ms ease, max-width 320ms var(--ease), margin-right 320ms var(--ease);
-  transition-delay: calc(220ms + var(--i, 0) * 25ms);
+@keyframes cut-word {
+  0%   { background-size: 0% 2px; opacity: 1; max-width: 100%; margin-right: .28em; }
+  39%  { background-size: 100% 2px; opacity: 1; max-width: 100%; margin-right: .28em; }
+  50%  { background-size: 100% 2px; opacity: 1; max-width: 100%; margin-right: .28em; }
+  100% { background-size: 100% 2px; opacity: 0; max-width: 0; margin-right: 0; }
 }
 .count { font-variant-numeric: tabular-nums; color: var(--graphite); }
 
@@ -147,6 +152,15 @@ html[data-input='keyboard'] [role='button']:focus {
   }
   .card.is-gone, .card.is-kept { animation-name: fade-only; }
   .enough { animation-name: fade-in-only; }
+  /* The JS swaps straight to the result under reduced motion; make the cut
+     words disappear without the strike or the delay. */
+  .word.cut {
+    animation: none !important;
+    background-size: 100% 2px;
+    opacity: 0;
+    max-width: 0;
+    margin-right: 0;
+  }
   @keyframes fade-only { to { opacity: 0; } }
   @keyframes fade-in-only {
     from { opacity: 0; letter-spacing: -0.03em; }

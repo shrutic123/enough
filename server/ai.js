@@ -10,7 +10,11 @@ const PROVIDERS = [
   {
     name: 'gemini',
     keyEnv: 'GEMINI_API_KEY',
-    defaultModel: 'gemini-3.5-flash-lite',
+    defaultModel: 'gemini-3.6-flash',
+    // A free Gemini key may not include the newer Flash models or may run out
+    // of quota. Lite is the model the free tier does serve, so fall back to it
+    // rather than failing the trim outright.
+    fallbackModel: 'gemini-3.5-flash-lite',
     request: ({ key, model, prompt }) => ({
       url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       headers: {
@@ -19,7 +23,13 @@ const PROVIDERS = [
       },
       body: {
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
+        // Editing one paragraph is a low-complexity task. Minimal thinking
+        // keeps the trim fast enough for a typing interaction.
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 1200,
+          thinkingConfig: { thinkingLevel: 'MINIMAL' },
+        },
       },
       read: (json) =>
         (json?.candidates?.[0]?.content?.parts || [])
@@ -112,16 +122,8 @@ function shortProviderMessage(json) {
   return typeof message === 'string' ? message.slice(0, 300) : ''
 }
 
-export async function trimToEssence(text) {
-  const provider = activeProvider()
-  if (!provider) {
-    const error = new Error('No AI provider is configured')
-    error.provider = null
-    error.status = 503
-    throw error
-  }
-
-  const request = provider.request({ key: provider.key, model: provider.model, prompt: `${PROMPT}${text}` })
+async function requestOne(provider, model, text) {
+  const request = provider.request({ key: provider.key, model, prompt: `${PROMPT}${text}` })
 
   let res
   try {
@@ -148,4 +150,33 @@ export async function trimToEssence(text) {
     throw providerError(provider.name, 502, 'The provider returned no text')
   }
   return value
+}
+
+export async function trimToEssence(text) {
+  const provider = activeProvider()
+  if (!provider) {
+    const error = new Error('No AI provider is configured')
+    error.provider = null
+    error.status = 503
+    throw error
+  }
+
+  const models = [provider.model]
+  if (provider.fallbackModel && provider.fallbackModel !== provider.model) {
+    models.push(provider.fallbackModel)
+  }
+
+  let lastError
+  for (const model of models) {
+    try {
+      return await requestOne(provider, model, text)
+    } catch (err) {
+      lastError = err
+      // Retry the fallback only when the provider answered with an error. A
+      // timeout (status 0) would just spend another 25 seconds pointlessly.
+      const more = model !== models[models.length - 1]
+      if (!more || !(err.status > 0)) throw err
+    }
+  }
+  throw lastError
 }

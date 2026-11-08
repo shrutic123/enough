@@ -329,7 +329,9 @@ type QueueCard = {
 
 ## 8. AI layer **[built]**
 
-`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.5-flash-lite`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
+`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.6-flash`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
+
+Gemini runs at `thinkingLevel: MINIMAL` because editing one paragraph does not need reasoning; this keeps a trim around one second. If the newer model answers with an HTTP error (typically quota on a free key, or a model that is not served there), the route retries once with `gemini-3.5-flash-lite` before giving up. A timeout is not retried, so a slow provider cannot double the wait.
 
 ### Essence
 
@@ -395,10 +397,12 @@ If the delete fails, the timers are cleared, `.struck.on` is removed, the phase 
 
 ### Essence **[built]**
 
-1. `trimEssence` resolves → the client computes `diffText(draft, trimmed)` and renders the diff paragraph with `word cut` spans, no `.on`/`.gone`.
-2. A **50ms macrotask** (not `requestAnimationFrame`) then flips `collapsed`: spans become `word cut on gone`. The delay lets the browser paint the un-struck state first, so the CSS transition fires on every trim. The CSS draws the pencil for **220ms**, then collapses each mark after `220ms + index*25ms` (320ms max-width, 240ms opacity).
-3. The swap to the editable result is timed from the cut count: `220 + (cuts-1)*25 + 320 + 60`, capped at 2,200ms. Reduced motion flips immediately and swaps in 0ms; the global media query removes the transitions.
-4. On a successful trim the draft state becomes the trimmed text, so **Edit draft** continues from the trimmed version rather than reverting to the original. Editing still cancels the frame/timer and clears the stale result.
+1. `trimEssence` resolves → the client computes `diffText(draft, trimmed)` and renders the diff paragraph with `word cut` spans.
+2. The pencil is a **CSS keyframe animation** that starts when the span mounts: the mark draws for **220ms**, holds for **60ms**, then the word collapses over **280ms**, delayed by `--i * 25ms` so the marks land in reading order. There is no class flip to race and no dependency on a paint happening between two state updates.
+3. The swap to the editable result is timed from the cut count: `220 + (cuts-1)*25 + 320 + 60`, capped at 2,200ms. Reduced motion skips the diff and swaps immediately; the media query also removes the animation.
+4. If the model returns the draft unchanged there are no marks to draw. The editor goes straight to the result and the count reads "N words. Already tight." rather than showing a silent non-animation.
+5. The sheet keeps one height across edit, diff and result: the textarea and the diff both use `calc(8 * 1.2rem * 1.5)`, so the page does not jump when the phase changes.
+6. On a successful trim the draft state becomes the trimmed text, so **Edit draft** continues from the trimmed version rather than reverting to the original. Editing still cancels the timer and clears the stale result.
 
 The word count stays visible during the swap ("N words to M."). The result textarea is read-only only while sending.
 

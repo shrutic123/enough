@@ -49,7 +49,12 @@ export default function EssencePage({
   const [phase, setPhase] = useState<Phase>('edit')
   const [parts, setParts] = useState<DiffPart[]>([])
   const [result, setResult] = useState('')
-  const [collapsed, setCollapsed] = useState(false)
+  // The word count of the text that was trimmed. Kept separately because the
+  // draft becomes the trimmed text, and the diff must still say "24 to 11".
+  const [sourceWords, setSourceWords] = useState(0)
+  // True when the model returned the draft unchanged, so there is no mark to
+  // draw. The result still appears; the count says why nothing moved.
+  const [noCuts, setNoCuts] = useState(false)
 
   const [trimming, setTrimming] = useState(false)
   const [trimError, setTrimError] = useState<string | null>(null)
@@ -62,16 +67,11 @@ export default function EssencePage({
   const draftRef = useRef('')
   const draftField = useRef<HTMLTextAreaElement | null>(null)
   const swapTimer = useRef<number | null>(null)
-  const frame = useRef<number | null>(null)
 
   const clearAnimation = useCallback(() => {
     if (swapTimer.current !== null) {
       window.clearTimeout(swapTimer.current)
       swapTimer.current = null
-    }
-    if (frame.current !== null) {
-      window.cancelAnimationFrame(frame.current)
-      frame.current = null
     }
   }, [])
 
@@ -145,7 +145,7 @@ export default function EssencePage({
       setPhase('edit')
       setParts([])
       setResult('')
-      setCollapsed(false)
+      setNoCuts(false)
       setSendError(null)
       setAnnouncement('')
     }
@@ -155,7 +155,7 @@ export default function EssencePage({
     clearAnimation()
     setPhase('edit')
     setParts([])
-    setCollapsed(false)
+    setNoCuts(false)
     setSendError(null)
     setAnnouncement('')
     // The draft replaces the result in the same slot, so put the cursor back
@@ -194,35 +194,33 @@ export default function EssencePage({
           clearAnimation()
           const nextParts = diffText(source, response.trimmed)
           const cuts = nextParts.filter((part) => part.removed).length
+          const noMarks = cuts === 0
           const revealMs = Math.min(220 + Math.max(cuts - 1, 0) * 25 + 320 + 60, 2200)
+          setSourceWords(countWords(source))
+          setNoCuts(noMarks)
           setParts(nextParts)
           setResult(response.trimmed)
           setDraft(response.trimmed)
-          setCollapsed(false)
-          setPhase('diff')
-          setAnnouncement(`Trimmed. ${formatWords(countWords(response.trimmed))}.`)
+          // A draft the model left alone has no pencil mark to draw; go
+          // straight to the result and say so in the count.
+          setPhase(noMarks ? 'result' : 'diff')
+          setAnnouncement(
+            noMarks
+              ? 'Already tight. Nothing to cut.'
+              : `Trimmed. ${formatWords(countWords(response.trimmed))}.`,
+          )
 
-          const reveal = () => {
-            setCollapsed(true)
+          // The pencil is a CSS animation, so it starts when the diff mounts.
+          // There is no class flip to race: this timer only swaps the finished
+          // diff for the editable result after the last word has collapsed.
+          if (!noMarks && !reduced) {
             swapTimer.current = window.setTimeout(
               () => {
                 swapTimer.current = null
                 setPhase('result')
               },
-              reduced ? 0 : revealMs,
+              revealMs,
             )
-          }
-
-          if (reduced) {
-            reveal()
-          } else {
-            // A macrotask (not rAF) ensures the initial, un-struck state is
-            // actually painted before the class change, so the CSS transition
-            // fires. rAF runs before paint and can skip the initial frame.
-            frame.current = window.setTimeout(() => {
-              frame.current = null
-              reveal()
-            }, 50) as unknown as number
           }
         })
         .catch((reason: unknown) => {
@@ -332,6 +330,13 @@ export default function EssencePage({
                   That draft is too long. Keep it under 4,000 characters.
                 </p>
               ) : null}
+              {limit ? (
+                <p className="count">
+                  {draft.length.toLocaleString('en-US')} of{' '}
+                  {limit.max.toLocaleString('en-US')} characters for {limit.label}.
+                  {draft.length > limit.max ? ' Shorten it to send.' : ''}
+                </p>
+              ) : null}
             </div>
           ) : (
             <section
@@ -343,16 +348,21 @@ export default function EssencePage({
                 {phase === 'diff' ? 'Draft' : 'Trimmed draft'}
               </p>
               <p className="essay-count">
-                {formatWords(wordCount)} to {resultWords}.
+                {noCuts
+                  ? `${formatWords(resultWords)}. Already tight.`
+                  : `${formatWords(sourceWords)} to ${resultWords}.`}
               </p>
               {phase === 'diff' ? (
-                <WordDiff parts={parts} collapsed={collapsed} />
+                <WordDiff parts={parts} />
               ) : (
                 <textarea
                   id="essence-result"
                   className="essay-input"
                   value={result}
-                  onChange={(event) => setResult(event.target.value)}
+                  onChange={(event) => {
+                    setResult(event.target.value)
+                    if (noCuts) setNoCuts(false)
+                  }}
                   readOnly={sending}
                   rows={8}
                 />

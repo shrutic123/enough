@@ -75,9 +75,13 @@ a.act {
 }
 
 .essay-sheet .essay-input {
+  display: block;
   border: 0;
   padding: 0;
-  min-height: 180px;
+  /* Eight rows at 1.2rem / 1.5. The diff uses the same height so the sheet
+     does not move between edit, diff and result. */
+  height: calc(8 * 1.2rem * 1.5);
+  resize: none;
   font-size: 1.2rem;
   line-height: 1.5;
   letter-spacing: -0.01em;
@@ -159,7 +163,10 @@ a.act {
    inside it without ever leaving a double space. */
 .essay-text {
   margin: 0;
-  min-height: 180px;
+  /* Match the draft/result textarea exactly: 8 rows at 1.2rem / 1.5. A very
+     long diff scrolls inside the same box rather than growing the sheet. */
+  height: calc(8 * 1.2rem * 1.5);
+  overflow-y: auto;
   max-width: 52ch;
   font-size: 1.15rem;
   line-height: 1.6;
