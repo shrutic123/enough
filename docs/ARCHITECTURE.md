@@ -333,7 +333,8 @@ type QueueCard = {
 
 ### Essence
 
-- `POST /api/ai/essence` takes `{ text }` only. Input is trimmed and capped at 4,000 characters.
+- `POST /api/ai/essence` takes `{ text }` only. Input is trimmed and capped at 4,000 characters. It needs no session, so a draft can be trimmed before Buffer is connected.
+- Because that route spends provider quota without a session, it is capped at 20 requests per client per 10 minutes; the refusal says to wait and retry. Each serverless instance keeps its own window.
 - The prompt asks for the trimmed text only: keep the one idea, delete filler and repetition, add nothing, preserve voice, @mentions and URLs.
 - The response is sanitized server-side: one surrounding code fence or quote pair is removed; empty output, output longer than the input, and obvious refusals are rejected. Failure → `502` "The trim didn't come back. Your draft is unchanged."
 - The **client** computes the word-level diff (`src/lib/diff.ts`, LCS over word tokens) between the original and the trimmed text. This guarantees a pencil mark can only land on a word that is actually gone. The model never returns indices.
@@ -395,9 +396,9 @@ If the delete fails, the timers are cleared, `.struck.on` is removed, the phase 
 ### Essence **[built]**
 
 1. `trimEssence` resolves → the client computes `diffText(draft, trimmed)` and renders the diff paragraph with `word cut` spans, no `.on`/`.gone`.
-2. On the next animation frame, `collapsed` flips: spans become `word cut on gone`. The CSS draws the pencil for **220ms**, then collapses each mark after `220ms + index*25ms` (320ms max-width, 240ms opacity).
+2. A **50ms macrotask** (not `requestAnimationFrame`) then flips `collapsed`: spans become `word cut on gone`. The delay lets the browser paint the un-struck state first, so the CSS transition fires on every trim. The CSS draws the pencil for **220ms**, then collapses each mark after `220ms + index*25ms` (320ms max-width, 240ms opacity).
 3. The swap to the editable result is timed from the cut count: `220 + (cuts-1)*25 + 320 + 60`, capped at 2,200ms. Reduced motion flips immediately and swaps in 0ms; the global media query removes the transitions.
-4. Editing the draft cancels the frame/timer and clears the result, so marks never describe stale text.
+4. On a successful trim the draft state becomes the trimmed text, so **Edit draft** continues from the trimmed version rather than reverting to the original. Editing still cancels the frame/timer and clears the stale result.
 
 The word count stays visible during the swap ("N words to M."). The result textarea is read-only only while sending.
 

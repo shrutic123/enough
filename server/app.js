@@ -293,11 +293,45 @@ app.post(
   }),
 )
 
+// Trimming is the only route that spends a provider call, and it runs without
+// a session so a draft can be trimmed before connecting. That also makes it
+// the one endpoint a stranger can spend quota on, so cap it per client. Each
+// serverless instance keeps its own window: enough to stop a loop, not a
+// distributed attack.
+const trimWindows = new Map()
+const TRIM_WINDOW_MS = 10 * 60 * 1000
+const TRIM_LIMIT = 20
+
+function allowTrim(req) {
+  const forwarded = req.get('x-forwarded-for')
+  const key = (forwarded ? forwarded.split(',')[0] : req.ip || 'unknown').trim()
+  const now = Date.now()
+  const recent = (trimWindows.get(key) || []).filter((at) => now - at < TRIM_WINDOW_MS)
+
+  if (recent.length >= TRIM_LIMIT) {
+    trimWindows.set(key, recent)
+    throw new HttpError(
+      429,
+      'You have trimmed several drafts already. Wait a few minutes, then try again.',
+    )
+  }
+
+  recent.push(now)
+  trimWindows.set(key, recent)
+
+  if (trimWindows.size > 1000) {
+    for (const [client, times] of trimWindows) {
+      if (!times.some((at) => now - at < TRIM_WINDOW_MS)) trimWindows.delete(client)
+    }
+  }
+}
+
 app.post(
   '/api/ai/essence',
   wrap(async (req, res) => {
     // Trimming is a pure text operation; it does not need a Buffer connection.
     // Keeping it session-free lets a draft be trimmed before connecting.
+    allowTrim(req)
 
     const raw = req.body?.text
     if (typeof raw !== 'string' || !raw.trim()) {

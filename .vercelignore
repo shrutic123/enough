@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.session-key
+certs/
+*.local
+vite.http.config.mjs
