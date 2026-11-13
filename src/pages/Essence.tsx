@@ -395,6 +395,12 @@ export default function EssencePage({
                 </p>
               ) : null}
             </>
+          ) : phase === 'result' ? (
+            <div className="actions">
+              <button className="act" type="button" onClick={handleEditDraft}>
+                Edit draft
+              </button>
+            </div>
           ) : null}
 
           <div className="essay-meta">
@@ -508,9 +514,6 @@ export default function EssencePage({
                   onClick={handleSend}
                 >
                   {sending ? 'Sending.' : 'Send to Buffer'}
-                </button>
-                <button className="act" type="button" onClick={handleEditDraft}>
-                  Edit draft
                 </button>
               </div>
               {sendError ? (
