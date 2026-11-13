@@ -145,7 +145,7 @@ When the review set is empty, show **"Enough."** in Instrument Serif italic. Sub
 1. Paste a draft.
 2. Press **Trim**, directly under the sheet. The server returns the trimmed text. The client computes a word-level diff, marks each removed word with the blue pencil, then collapses the removed words with a 25ms stagger while the count goes from the original to the result. The sheet keeps one height through edit, diff and result, so the page does not jump.
 3. If the model returns the draft unchanged, there is no mark to draw: go straight to the result and read "N words. Already tight."
-4. The user can edit the result before sending.
+4. The user can edit the result before sending: **Edit draft** takes the same row under the sheet that **Trim** occupied, and brings **Trim** back when pressed. **Send to Buffer** stays below the channel and destination fields, next to the action it commits.
 5. Choose a channel and a destination:
    - **Scheduled post** — channel required; `addToQueue`.
    - **Draft** — channel required; `saveToDraft: true`.
