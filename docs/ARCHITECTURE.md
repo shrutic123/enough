@@ -332,9 +332,9 @@ type QueueCard = {
 
 ## 8. AI layer **[built]**
 
-`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.5-flash`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
+`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.5-flash-lite`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
 
-Gemini runs at `thinkingLevel: MINIMAL` and each attempt is capped at **6 seconds**. If the first model fails or times out, the route retries once with `gemini-3.5-flash-lite`; a timeout is a failure and must not end the request. `gemini-3.6-flash` was measured at **62 seconds** on a 757-character draft, while `gemini-3.5-flash` answered the same draft in under a second on the free key, which is why 3.5 Flash is the default.
+Gemini runs at `thinkingLevel: MINIMAL` and each attempt is capped at **12 seconds**. If the first model fails or times out, the route retries once with `gemini-3.5-flash`; a timeout is a failure and must not end the request. Free-tier quota is per model: Flash-Lite is roughly 15 requests/minute and 500/day, while Flash is about 5/minute and 20/day. Lite is the default so a day of demoing does not exhaust the key; `gemini-3.6-flash` is not used because it was measured at **62 seconds** on a 757-character draft.
 
 ### Essence
 
@@ -479,7 +479,7 @@ Manual checks, run against a real Buffer account:
 - Character limits are known for the common networks; an unknown service falls back to 4,000 characters. Buffer remains the final judge.
 - TikTok, YouTube and Pinterest creation is blocked with a reason: this version sends text and images, not video or boards.
 - Instagram personal profiles are scheduled as reminders, not automatic publishing.
-- `gemini-3.6-flash` can take about a minute on a long draft, so the default is `gemini-3.5-flash`. Both it and the Lite fallback work on the free key; no billing is required.
+- Free-tier Gemini is per model: Flash-Lite allows about 500 requests a day, while Flash allows about 20. The default is Lite for that reason; no billing is required for a normal demo.
 - Production is live and verified; the demo video is still to be recorded.
 
 ## 14. Deployment runbook

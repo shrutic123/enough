@@ -366,7 +366,12 @@ app.post(
       )
       throw new HttpError(
         502,
-        withCause("The trim didn't come back. Your draft is unchanged. Try again.", err.message),
+        withCause(
+          err.busy
+            ? "The trim service is busy right now. Wait a minute, then try again. Your draft is unchanged."
+            : "The trim didn't come back. Your draft is unchanged. Try again.",
+          err.message,
+        ),
       )
     }
 

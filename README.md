@@ -106,7 +106,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Trim:** only the draft text is sent. No account id, email, channel name or queue data.
 - **Queue:** no post text is sent to an AI provider in this release. Reasons come from status and date.
 - **Stored:** nothing beyond the session cookie. Drafts are not saved on the server.
-- **Provider:** whichever key is set, in order: Gemini (`gemini-3.5-flash`), OpenAI (`gpt-4.1-mini`), Anthropic (`claude-sonnet-4-5`). `AI_MODEL` overrides the model. Each Gemini attempt is capped at 6 seconds and falls back once to `gemini-3.5-flash-lite`, so a slow model cannot turn a trim into a timeout. Both models run on a free key.
+- **Provider:** whichever key is set, in order: Gemini (`gemini-3.5-flash-lite`), OpenAI (`gpt-4.1-mini`), Anthropic (`claude-sonnet-4-5`). `AI_MODEL` overrides the model. Each Gemini attempt is capped at 12 seconds and falls back once to `gemini-3.5-flash`, so a slow model cannot turn a trim into a timeout. No billing is needed: the free tier allows about 500 Lite requests a day, versus 20 on Flash.
 - The trim prompt forbids adding facts, links, hashtags, emoji or new sentences, and asks for the text only. The client computes the diff, so a mark can only appear on a word the model actually dropped.
 
 ## Design notes

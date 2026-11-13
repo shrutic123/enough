@@ -10,15 +10,17 @@ const PROVIDERS = [
   {
     name: 'gemini',
     keyEnv: 'GEMINI_API_KEY',
-    // 3.6 Flash can spend a minute thinking about a long paragraph; that is
-    // too slow for a writing interaction. 3.5 Flash answers the same free-key
-    // request in about a second. Lite is the fallback if Flash is over quota.
-    defaultModel: 'gemini-3.5-flash',
-    fallbackModel: 'gemini-3.5-flash-lite',
-    // Bound each attempt so a slow model leaves time for the fallback. Flash
-    // normally answers in about a second; six seconds is generous without
-    // making the writer wait through a stalled request.
-    timeoutMs: 6_000,
+    // Free-tier Gemini is per-model: Flash is about 5 requests/minute and
+    // 20/day, while Flash-Lite is about 15/minute and 500/day. Lite is the
+    // default so a day of demoing does not exhaust the key; Flash is the
+    // quality fallback when Lite is unavailable. Both are free.
+    defaultModel: 'gemini-3.5-flash-lite',
+    fallbackModel: 'gemini-3.5-flash',
+    // Bound each attempt so a slow model leaves time for the fallback. Lite
+    // normally answers in one to two seconds, but the free tier can take
+    // longer under load; twelve seconds covers that without returning to the
+    // old 25-second wait.
+    timeoutMs: 12_000,
     request: ({ key, model, prompt }) => ({
       url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       headers: {
@@ -171,15 +173,20 @@ export async function trimToEssence(text) {
   }
 
   let lastError
+  let sawBusy = false
   for (const model of models) {
     try {
       return await requestOne(provider, model, text)
     } catch (err) {
       lastError = err
+      if (err.status === 429 || err.status === 503) sawBusy = true
       // Try the fallback for every failure, including a timeout: the newer
       // model can hang on a long draft while Lite answers in a second, and a
       // timeout on the first attempt must not end the request.
-      if (model === models[models.length - 1]) throw err
+      if (model === models[models.length - 1]) {
+        if (sawBusy) lastError.busy = true
+        throw lastError
+      }
     }
   }
   throw lastError
