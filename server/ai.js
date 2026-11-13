@@ -180,9 +180,9 @@ export async function trimToEssence(text) {
     } catch (err) {
       lastError = err
       if (err.status === 429 || err.status === 503) sawBusy = true
-      // Try the fallback for every failure, including a timeout: the newer
-      // model can hang on a long draft while Lite answers in a second, and a
-      // timeout on the first attempt must not end the request.
+      // Try the fallback for every failure, including a timeout: the free
+      // tier can stall one model while the other still answers, and a timeout
+      // on the first attempt must not end the request.
       if (model === models[models.length - 1]) {
         if (sawBusy) lastError.busy = true
         throw lastError
