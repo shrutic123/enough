@@ -2,7 +2,7 @@
 // is present, so a deployment only needs to set one of them. Nothing in this
 // file logs the draft or a key: callers log the event and status instead.
 
-const TIMEOUT_MS = 25_000
+const DEFAULT_TIMEOUT_MS = 25_000
 
 // Order matters: the first key present wins. This keeps a deliberate choice
 // possible (set only the key you want) without another setting.
@@ -10,11 +10,15 @@ const PROVIDERS = [
   {
     name: 'gemini',
     keyEnv: 'GEMINI_API_KEY',
-    defaultModel: 'gemini-3.6-flash',
-    // A free Gemini key may not include the newer Flash models or may run out
-    // of quota. Lite is the model the free tier does serve, so fall back to it
-    // rather than failing the trim outright.
+    // 3.6 Flash can spend a minute thinking about a long paragraph; that is
+    // too slow for a writing interaction. 3.5 Flash answers the same free-key
+    // request in about a second. Lite is the fallback if Flash is over quota.
+    defaultModel: 'gemini-3.5-flash',
     fallbackModel: 'gemini-3.5-flash-lite',
+    // Bound each attempt so a slow model leaves time for the fallback. Flash
+    // normally answers in about a second; six seconds is generous without
+    // making the writer wait through a stalled request.
+    timeoutMs: 6_000,
     request: ({ key, model, prompt }) => ({
       url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
       headers: {
@@ -131,7 +135,7 @@ async function requestOne(provider, model, text) {
       method: 'POST',
       headers: request.headers,
       body: JSON.stringify(request.body),
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(provider.timeoutMs || DEFAULT_TIMEOUT_MS),
     })
   } catch (err) {
     // A timeout or a network failure has no HTTP status to report.
@@ -172,10 +176,10 @@ export async function trimToEssence(text) {
       return await requestOne(provider, model, text)
     } catch (err) {
       lastError = err
-      // Retry the fallback only when the provider answered with an error. A
-      // timeout (status 0) would just spend another 25 seconds pointlessly.
-      const more = model !== models[models.length - 1]
-      if (!more || !(err.status > 0)) throw err
+      // Try the fallback for every failure, including a timeout: the newer
+      // model can hang on a long draft while Lite answers in a second, and a
+      // timeout on the first attempt must not end the request.
+      if (model === models[models.length - 1]) throw err
     }
   }
   throw lastError

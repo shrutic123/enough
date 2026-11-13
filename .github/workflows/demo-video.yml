@@ -1,0 +1,125 @@
+name: Demo video
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "auto = live when the session secret exists, otherwise fixture"
+        type: choice
+        options:
+          - auto
+          - live
+          - fixture
+        default: auto
+      url:
+        description: "Stable production alias (not a per-deployment URL)"
+        required: false
+        default: ""
+      cards:
+        description: "Maximum queue cards to review"
+        required: false
+        default: "6"
+      seconds:
+        description: "Final length in seconds"
+        required: false
+        default: "60"
+      publish:
+        description: "Attach the MP4 to the demo-video GitHub release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: demo-video
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEMO_STORAGE_STATE_B64: ${{ secrets.DEMO_STORAGE_STATE }}
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Load the production session
+        if: env.DEMO_STORAGE_STATE_B64 != ''
+        run: |
+          mkdir -p demo/.auth
+          printf '%s' "$DEMO_STORAGE_STATE_B64" | base64 --decode > demo/.auth/state.json
+          chmod 600 demo/.auth/state.json
+
+      - name: Resolve settings
+        env:
+          MODE_INPUT: ${{ inputs.mode }}
+          URL_INPUT: ${{ inputs.url }}
+          URL_VAR: ${{ vars.PRODUCTION_URL }}
+          CARDS_INPUT: ${{ inputs.cards }}
+          SECONDS_INPUT: ${{ inputs.seconds }}
+        run: |
+          url="${URL_INPUT:-${URL_VAR:-https://enough-nu-flame.vercel.app}}"
+          mode="$MODE_INPUT"
+          if [ "$mode" = "auto" ]; then
+            if [ -s demo/.auth/state.json ]; then mode=live; else mode=fixture; fi
+          fi
+          if [ "$mode" = "live" ] && [ ! -s demo/.auth/state.json ]; then
+            echo "::error::Live mode needs the DEMO_STORAGE_STATE secret. Run npm run demo:capture and add it."
+            exit 1
+          fi
+          {
+            echo "DEMO_URL=$url"
+            echo "DEMO_MODE=$mode"
+            echo "DEMO_CARDS=${CARDS_INPUT:-6}"
+            echo "DEMO_SECONDS=${SECONDS_INPUT:-60}"
+          } >> "$GITHUB_ENV"
+          echo "Recording $url in $mode mode."
+
+      - name: Record
+        run: npm run demo:record
+
+      - name: Encode MP4
+        run: npm run demo:encode
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: enough-demo-${{ env.DEMO_MODE }}
+          path: |
+            demo/artifacts/enough-demo.mp4
+            demo/artifacts/poster.jpg
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Publish release asset
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="demo-video"
+          asset="enough-demo.mp4"
+          if [ "$DEMO_MODE" = "fixture" ]; then asset="enough-demo-fixture.mp4"; fi
+          cp demo/artifacts/enough-demo.mp4 "demo/artifacts/$asset"
+          gh release view "$tag" >/dev/null 2>&1 || \
+            gh release create "$tag" --title "Enough demo" --notes "One-minute demo recorded against $DEMO_URL."
+          gh release upload "$tag" "demo/artifacts/$asset" --clobber
+          echo "https://github.com/${{ github.repository }}/releases/download/$tag/$asset"
+
+      - name: Remove the session
+        if: always()
+        run: rm -rf demo/.auth

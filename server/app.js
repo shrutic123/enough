@@ -366,7 +366,7 @@ app.post(
       )
       throw new HttpError(
         502,
-        withCause("The trim didn't come back. Your draft is unchanged.", err.message),
+        withCause("The trim didn't come back. Your draft is unchanged. Try again.", err.message),
       )
     }
 

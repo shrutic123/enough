@@ -198,7 +198,7 @@ Instagram requires an image, so the editor asks for an optional public image URL
 - Send the draft text only.
 - Ask for the trimmed text only, not a list of indices. The client derives the diff, so the UI cannot mark a cut the model did not make.
 - Cap output length; reject empty or wildly longer responses.
-- Gemini runs at minimal thinking and defaults to `gemini-3.6-flash`, with one fallback to `gemini-3.5-flash-lite` when the newer model is unavailable or over quota. A free key usually takes that fallback; the trim still works.
+- Gemini defaults to `gemini-3.5-flash`, which answers a draft in about a second on the free key, with `gemini-3.5-flash-lite` as a fallback. Each attempt is capped at 6 seconds and a timeout also falls back, so a slow model cannot end the request. (`gemini-3.6-flash` was measured at 62 seconds on a long draft, so it is not the default.)
 - The route spends provider quota without a session, so it is capped at 20 requests per client per 10 minutes.
 
 ### Data
@@ -317,6 +317,6 @@ These were open disagreements; they are settled for v1.
 ## 15. Open questions
 
 1. **Demo video:** record before the submission deadline; add the link to the README.
-2. **Stronger model:** the current free Gemini key is quota-blocked on `gemini-3.6-flash`, so production takes the Lite fallback. Enabling billing or adding an OpenAI/Anthropic key would make the stronger model the normal path.
+2. **Paid model:** not required. The free Gemini key serves `gemini-3.5-flash` in about a second; a paid key would only raise limits.
 3. **Post-v1, only if time:** a "never cut these" list, or a density reason ("Third post that day"). Not before video and submission.
 4. **Undo:** stays out. The demo uses a test account.

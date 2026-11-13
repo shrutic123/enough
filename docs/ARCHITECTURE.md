@@ -332,9 +332,9 @@ type QueueCard = {
 
 ## 8. AI layer **[built]**
 
-`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.6-flash`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
+`server/ai.js` is the only AI code. The provider is whichever key is present, in order: `GEMINI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`. `AI_MODEL` overrides the model. Defaults: `gemini-3.5-flash`, `gpt-4.1-mini`, `claude-sonnet-4-5`. No key → `503` with a sentence that says the draft is unchanged.
 
-Gemini runs at `thinkingLevel: MINIMAL` because editing one paragraph does not need reasoning; this keeps a trim around one second. If the newer model answers with an HTTP error (typically quota on a free key, or a model that is not served there), the route retries once with `gemini-3.5-flash-lite` before giving up. A timeout is not retried, so a slow provider cannot double the wait.
+Gemini runs at `thinkingLevel: MINIMAL` and each attempt is capped at **6 seconds**. If the first model fails or times out, the route retries once with `gemini-3.5-flash-lite`; a timeout is a failure and must not end the request. `gemini-3.6-flash` was measured at **62 seconds** on a 757-character draft, while `gemini-3.5-flash` answered the same draft in under a second on the free key, which is why 3.5 Flash is the default.
 
 ### Essence
 
@@ -479,7 +479,7 @@ Manual checks, run against a real Buffer account:
 - Character limits are known for the common networks; an unknown service falls back to 4,000 characters. Buffer remains the final judge.
 - TikTok, YouTube and Pinterest creation is blocked with a reason: this version sends text and images, not video or boards.
 - Instagram personal profiles are scheduled as reminders, not automatic publishing.
-- The free Gemini key is quota-blocked on `gemini-3.6-flash`, so production normally takes the `gemini-3.5-flash-lite` fallback. Billing or another provider key makes the stronger model the normal path.
+- `gemini-3.6-flash` can take about a minute on a long draft, so the default is `gemini-3.5-flash`. Both it and the Lite fallback work on the free key; no billing is required.
 - Production is live and verified; the demo video is still to be recorded.
 
 ## 14. Deployment runbook
@@ -526,4 +526,3 @@ Executed for production at <https://enough-nu-flame.vercel.app>. The steps below
 1. Does `deletePost` succeed for `error` status posts?
 2. Pagination: is the first 50 enough, or should the client follow `pageInfo` before capping at 20?
 3. Where should sign-out live now that `/api/auth/logout` exists but nothing calls it?
-4. Should the project enable billing or add a second provider key so `gemini-3.6-flash` becomes the normal path instead of the Lite fallback?

@@ -4,6 +4,8 @@ dist/
 .session-key
 .vercel/
 certs/
+demo/.auth/
+demo/artifacts/
 *.local
 *.tsbuildinfo
 .DS_Store
